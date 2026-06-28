@@ -46,6 +46,29 @@ export function normalizeText(value: string) {
     .trim();
 }
 
+function normalizeLookupText(value: string) {
+  return normalizeText(value)
+    .replace(/\bii\b/g, "2")
+    .replace(/\biii\b/g, "3")
+    .replace(/\biv\b/g, "4")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function lookupAliases(value: string) {
+  const normalized = normalizeLookupText(value);
+  const beforeDash = normalizeLookupText(value.split("-")[0] ?? "");
+  const withoutArticle = beforeDash.replace(/^(el|la|los|las)\s+/, "");
+  const firstToken = withoutArticle.split(" ")[0] ?? "";
+  const aliases = [normalized, beforeDash, withoutArticle];
+
+  if (firstToken.length >= 5 && !["plaza", "parque"].includes(firstToken)) {
+    aliases.push(firstToken);
+  }
+
+  return [...new Set(aliases.filter((alias) => alias.length >= 3))];
+}
+
 function normalizeDate(value?: string | null) {
   if (!value) return undefined;
 
@@ -166,23 +189,30 @@ function findInvoiceTotals(text: string, parsedData: InvoiceParsedData) {
 }
 
 function findLookupId(items: LookupItem[], haystack: string, explicitName?: string | null) {
-  const explicit = explicitName ? normalizeText(explicitName) : "";
-  const normalizedHaystack = normalizeText(haystack);
+  const explicit = explicitName ? normalizeLookupText(explicitName) : "";
+  const normalizedHaystack = normalizeLookupText(haystack);
 
   return items.find((item) => {
-    const name = normalizeText(item.name);
-    return Boolean(name && (explicit === name || explicit.includes(name) || normalizedHaystack.includes(name)));
+    const aliases = lookupAliases(item.name);
+    return aliases.some((alias) =>
+      explicit === alias
+      || explicit.includes(alias)
+      || normalizedHaystack.includes(alias)
+    );
   })?.id;
 }
 
 function findLookupIds(items: LookupItem[], haystack: string, explicitNames: string[] = []) {
-  const normalizedHaystack = normalizeText(haystack);
-  const explicit = explicitNames.map(normalizeText).filter(Boolean);
+  const normalizedHaystack = normalizeLookupText(haystack);
+  const explicit = explicitNames.map(normalizeLookupText).filter(Boolean);
 
   return items
     .filter((item) => {
-      const name = normalizeText(item.name);
-      return Boolean(name && (normalizedHaystack.includes(name) || explicit.some((value) => value === name || value.includes(name))));
+      const aliases = lookupAliases(item.name);
+      return aliases.some((alias) =>
+        normalizedHaystack.includes(alias)
+        || explicit.some((value) => value === alias || value.includes(alias))
+      );
     })
     .map((item) => item.id);
 }

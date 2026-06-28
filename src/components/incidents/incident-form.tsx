@@ -110,7 +110,14 @@ export function IncidentForm({
     setReadingInvoice(false);
 
     if (successful.length > 0) {
-      const first = successful[0].suggestions;
+      const firstWith = <K extends keyof Suggestions>(key: K) =>
+        successful.map((item) => item.suggestions[key]).find((value) => {
+          if (Array.isArray(value)) return value.length > 0;
+          return value !== undefined && value !== null && value !== "";
+        });
+      const suggestedZoneIds = [
+        ...new Set(successful.flatMap((item) => item.suggestions.zona_ids ?? []))
+      ];
       const descriptions = successful.map((item) => item.suggestions.descripcion).filter(Boolean);
       const total = successful.reduce((sum, item) => {
         const amount = item.suggestions.importe_factura;
@@ -119,20 +126,27 @@ export function IncidentForm({
         return Number.isFinite(parsed) ? sum + parsed : sum;
       }, 0);
 
-      if (!fecha && first.fecha_incidencia) setFecha(first.fecha_incidencia);
-      if (!localId && first.local_id) setLocalId(first.local_id);
-      if (zoneIds.length === 0 && first.zona_ids?.length) setZoneIds(first.zona_ids);
-      if (!responsableId && first.responsable_id) setResponsableId(first.responsable_id);
-      if (!proveedorId && first.proveedor_id) setProveedorId(first.proveedor_id);
-      if (!prioridadId && first.prioridad_id) setPrioridadId(first.prioridad_id);
-      if (!estadoId && first.estado_id) setEstadoId(first.estado_id);
+      const suggestedFecha = firstWith("fecha_incidencia");
+      const suggestedLocal = firstWith("local_id");
+      const suggestedResponsable = firstWith("responsable_id");
+      const suggestedProveedor = firstWith("proveedor_id");
+      const suggestedPrioridad = firstWith("prioridad_id");
+      const suggestedEstado = firstWith("estado_id");
+
+      if (typeof suggestedFecha === "string") setFecha(suggestedFecha);
+      if (typeof suggestedLocal === "string") setLocalId(suggestedLocal);
+      if (suggestedZoneIds.length > 0) setZoneIds(suggestedZoneIds);
+      if (typeof suggestedResponsable === "string") setResponsableId(suggestedResponsable);
+      if (typeof suggestedProveedor === "string") setProveedorId(suggestedProveedor);
+      if (typeof suggestedPrioridad === "string") setPrioridadId(suggestedPrioridad);
+      if (typeof suggestedEstado === "string") setEstadoId(suggestedEstado);
       if (descriptions.length > 0) {
         setDescripcion((current) => {
           const nextDescription = descriptions.join("\n\n---\n\n");
           return current.trim() ? `${current.trim()}\n\n--- Facturas añadidas ---\n${nextDescription}` : nextDescription;
         });
       }
-      if (showAdmin && total !== 0 && !importeFactura) {
+      if (showAdmin && total !== 0) {
         setImporteFactura(String(Math.round(total * 100) / 100));
       }
       setAttachments((current) => {
