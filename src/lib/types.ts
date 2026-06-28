@@ -117,6 +117,10 @@ export type Notification = {
   message: string;
   read: boolean;
   created_at: string;
+  incidents?: {
+    id: string;
+    profiles?: Pick<Profile, "id" | "email" | "full_name"> | null;
+  } | null;
 };
 
 export type IncidentHistory = {
@@ -139,6 +143,7 @@ export type IncidentFilters = {
   from?: string;
   to?: string;
   q?: string;
+  status_group?: "new" | "pending" | "resolved";
 };
 
 type TableShape<Row> = {

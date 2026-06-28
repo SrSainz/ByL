@@ -16,18 +16,17 @@ export function LoginForm() {
     <form action={formAction} className="space-y-4">
       <div className="space-y-2">
         <label className="label" htmlFor="email">
-          Email
+          Email o nombre de usuario
         </label>
         <input
           className="field"
           id="email"
           name="email"
-          type="email"
+          type="text"
           autoCapitalize="none"
-          autoComplete="email"
+          autoComplete="username"
           autoCorrect="off"
-          inputMode="email"
-          placeholder="tu@email.com"
+          placeholder="tu@email.com o Sergio"
           required
         />
       </div>

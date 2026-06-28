@@ -56,6 +56,7 @@ export function parseFilters(searchParams: Record<string, string | string[] | un
     const value = searchParams[key];
     return Array.isArray(value) ? value[0] : value;
   };
+  const statusGroup = get("status_group");
 
   return {
     local: get("local") || undefined,
@@ -66,7 +67,10 @@ export function parseFilters(searchParams: Record<string, string | string[] | un
     proveedor: get("proveedor") || undefined,
     from: get("from") || undefined,
     to: get("to") || undefined,
-    q: get("q") || undefined
+    q: get("q") || undefined,
+    status_group: statusGroup === "new" || statusGroup === "pending" || statusGroup === "resolved"
+      ? statusGroup
+      : undefined
   };
 }
 
@@ -105,6 +109,16 @@ export async function getIncidents(profile: Profile, filters: IncidentFilters = 
       incident.zona_id === filters.zona
       || incident.incident_zones?.some((item) => item.zona_id === filters.zona)
     );
+  }
+
+  if (filters.status_group) {
+    rows = rows.filter((incident) => {
+      const status = incident.statuses?.name ?? "";
+
+      if (filters.status_group === "new") return status === "Nueva";
+      if (filters.status_group === "resolved") return ["Resuelta", "Cerrada"].includes(status);
+      return !["Resuelta", "Cerrada", "Cancelada"].includes(status);
+    });
   }
 
   return rows;
@@ -183,7 +197,7 @@ export async function getNotifications(profile: Profile) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("notifications")
-    .select("*")
+    .select("*,incidents(id,profiles(id,email,full_name))")
     .eq("user_id", profile.id)
     .order("created_at", { ascending: false });
 

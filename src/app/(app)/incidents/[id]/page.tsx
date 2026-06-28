@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Archive, ExternalLink, FileText, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArrowLeft, ExternalLink, FileText, Pencil, Trash2 } from "lucide-react";
 import { archiveIncidentAction, deleteIncidentAction } from "@/app/actions/incidents";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -38,6 +38,12 @@ export default async function IncidentDetailPage({
         description={`Creada ${formatDateTime(incident.created_at)}`}
         actions={
           <>
+            {canSeePremiumFields(profile.role) ? (
+              <ButtonLink href="/notifications" variant="secondary">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Notificaciones
+              </ButtonLink>
+            ) : null}
             {canEditIncident(profile, incident) ? (
               <ButtonLink href={`/incidents/${incident.id}/edit`} variant="secondary">
                 <Pencil className="h-4 w-4" aria-hidden="true" />

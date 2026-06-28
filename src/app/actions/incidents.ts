@@ -203,6 +203,7 @@ export async function deleteIncidentAction(formData: FormData) {
 
   const supabase = await createClient();
   await supabase.from("incidents").delete().eq("id", incidentId);
+  revalidatePath("/dashboard");
   revalidatePath("/incidents");
   redirect("/incidents");
 }

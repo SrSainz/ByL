@@ -14,6 +14,10 @@ export default async function UsersAdminPage() {
     .select("*")
     .order("created_at", { ascending: false });
   const users = (data ?? []) as Profile[];
+  const groups = [
+    { role: "admin" as const, title: "Administradores", users: users.filter((user) => user.role === "admin") },
+    { role: "basic" as const, title: "Usuarios básicos", users: users.filter((user) => user.role === "basic") }
+  ];
 
   return (
     <div>
@@ -32,38 +36,59 @@ export default async function UsersAdminPage() {
         </form>
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-lg border border-border bg-white">
-        <div className="hidden">
-          {users.map((user) => (
-            <form key={user.id} id={`user-form-${user.id}`} action={updateUserAction} />
-          ))}
-        </div>
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[920px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Nombre</th>
-                <th className="px-4 py-3">Rol</th>
-                <th className="px-4 py-3">Contraseña</th>
-                <th className="px-4 py-3">Activo</th>
-                <th className="px-4 py-3">Acción</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {users.map((user) => <UserTableRow key={user.id} user={user} />)}
-            </tbody>
-          </table>
-        </div>
-        <div className="divide-y divide-border md:hidden">
-          {users.map((user) => (
-            <div key={user.id} className="p-4">
-              <UserMobileCard user={user} />
-            </div>
-          ))}
-        </div>
-      </section>
+      <div className="mt-5 space-y-5">
+        {groups.map((group) => (
+          <UserGroup key={group.role} title={group.title} users={group.users} />
+        ))}
+      </div>
     </div>
+  );
+}
+
+function UserGroup({ title, users }: { title: string; users: Profile[] }) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white">
+      <div className="border-b border-border bg-slate-50 px-4 py-3">
+        <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+        <p className="text-xs text-muted">{users.length} usuario{users.length === 1 ? "" : "s"}</p>
+      </div>
+
+      {users.length === 0 ? (
+        <p className="p-4 text-sm text-muted">No hay usuarios en este grupo.</p>
+      ) : (
+        <>
+          <div className="hidden">
+            {users.map((user) => (
+              <form key={user.id} id={`user-form-${user.id}`} action={updateUserAction} />
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Nombre</th>
+                  <th className="px-4 py-3">Rol</th>
+                  <th className="px-4 py-3">Contraseña</th>
+                  <th className="px-4 py-3">Activo</th>
+                  <th className="px-4 py-3">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {users.map((user) => <UserTableRow key={user.id} user={user} />)}
+              </tbody>
+            </table>
+          </div>
+          <div className="divide-y divide-border md:hidden">
+            {users.map((user) => (
+              <div key={user.id} className="p-4">
+                <UserMobileCard user={user} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

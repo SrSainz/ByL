@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type AuthState = {
   error?: string;
@@ -11,11 +12,17 @@ export type AuthState = {
 };
 
 export async function signInAction(_: AuthState, formData: FormData): Promise<AuthState> {
-  const email = String(formData.get("email") || "").trim();
+  const identifier = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
 
-  if (!email || !password) {
-    return { error: "Introduce email y contraseña." };
+  if (!identifier || !password) {
+    return { error: "Introduce email o nombre de usuario y contraseña." };
+  }
+
+  const email = await resolveLoginEmail(identifier);
+
+  if (!email) {
+    return { error: "No se ha encontrado un usuario activo con ese email o nombre." };
   }
 
   const supabase = await createClient();
@@ -26,6 +33,26 @@ export async function signInAction(_: AuthState, formData: FormData): Promise<Au
   }
 
   redirect("/dashboard");
+}
+
+async function resolveLoginEmail(identifier: string) {
+  if (identifier.includes("@")) {
+    return identifier;
+  }
+
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("active", true)
+    .ilike("full_name", identifier)
+    .limit(2);
+
+  if (error || !data || data.length !== 1) {
+    return null;
+  }
+
+  return data[0].email;
 }
 
 export async function resetPasswordAction(_: AuthState, formData: FormData): Promise<AuthState> {

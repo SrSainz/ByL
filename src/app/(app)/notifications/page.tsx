@@ -25,6 +25,9 @@ export default async function NotificationsPage() {
                 <div>
                   <p className="font-semibold text-slate-950">{notification.title}</p>
                   <p className="mt-1 text-sm text-slate-700">{notification.message}</p>
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Usuario: {notification.incidents?.profiles?.full_name || notification.incidents?.profiles?.email || "No disponible"}
+                  </p>
                   <p className="mt-2 text-xs text-muted">{formatDateTime(notification.created_at)}</p>
                   {notification.incident_id ? (
                     <Link className="mt-2 inline-flex text-sm font-semibold text-primary" href={`/incidents/${notification.incident_id}`}>

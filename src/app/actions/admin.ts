@@ -150,3 +150,23 @@ export async function updateLookupAction(formData: FormData) {
   await supabase.from(table).update(payload).eq("id", id);
   revalidatePath("/admin/lists");
 }
+
+export async function deleteLookupAction(formData: FormData) {
+  await requireRole(["admin"]);
+  const table = str(formData, "table") as LookupTable;
+  const id = str(formData, "id");
+
+  if (!lookupTables.includes(table) || !id) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from(table).delete().eq("id", id);
+
+  if (error) {
+    await supabase.from(table).update({ active: false }).eq("id", id);
+  }
+
+  revalidatePath("/admin/lists");
+  revalidatePath("/incidents");
+}

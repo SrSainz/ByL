@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { signOutAction } from "@/app/actions/auth";
+import { ActiveLink } from "@/components/layout/active-link";
 import { GuidedTour } from "@/components/layout/guided-tour";
 import { HelpMenu } from "@/components/layout/help-menu";
 import { PasswordChangeGuard } from "@/components/layout/password-change-guard";
@@ -20,8 +21,10 @@ import { isAdmin, isPremiumRole } from "@/lib/permissions";
 import type { Profile } from "@/lib/types";
 
 const navBase = "focus-ring flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100";
+const navActive = "bg-primary/10 text-primary hover:bg-primary/10";
 const mobileNavBase =
   "focus-ring flex min-h-14 flex-col items-center justify-center gap-1 rounded-md px-1 text-[11px] font-semibold text-slate-700 hover:bg-surface-subtle";
+const mobileNavActive = "bg-primary/10 text-primary hover:bg-primary/10";
 
 type NavItem = {
   href: string;
@@ -122,10 +125,17 @@ export function AppShell({
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
-                <Link key={item.href} href={item.href} className={navBase} data-tour={item.tour}>
+                <ActiveLink
+                  key={item.href}
+                  href={item.href}
+                  className={navBase}
+                  activeClassName={navActive}
+                  data-tour={item.tour}
+                  exact={item.href === "/dashboard"}
+                >
                   <Icon className="h-4 w-4" aria-hidden="true" />
                   {item.label}
-                </Link>
+                </ActiveLink>
               );
             })}
           </nav>
@@ -145,10 +155,17 @@ export function AppShell({
           {mobileItems.map((item) => {
             const Icon = item.icon;
             return (
-              <Link key={item.href} href={item.href} className={mobileNavBase} data-tour={item.tour}>
+              <ActiveLink
+                key={item.href}
+                href={item.href}
+                className={mobileNavBase}
+                activeClassName={mobileNavActive}
+                data-tour={item.tour}
+                exact={item.href === "/dashboard"}
+              >
                 <Icon className="h-5 w-5" aria-hidden="true" />
                 <span className="max-w-full truncate">{item.label}</span>
-              </Link>
+              </ActiveLink>
             );
           })}
         </div>

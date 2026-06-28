@@ -1,3 +1,4 @@
+import { Plus, SlidersHorizontal } from "lucide-react";
 import { createIncidentAction } from "@/app/actions/incidents";
 import { IncidentFiltersForm } from "@/components/incidents/incident-filters";
 import { IncidentForm } from "@/components/incidents/incident-form";
@@ -25,25 +26,42 @@ export default async function IncidentsPage({
         title="Incidencias"
         description="Crea nuevas incidencias y consulta el historial según tus permisos."
       />
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-950">Crear incidencia</h2>
-          <p className="text-sm text-muted">Rellena los datos necesarios y pulsa guardar.</p>
+
+      <details className="group rounded-lg border border-border bg-white p-4">
+        <summary className="focus-ring flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-md px-1 text-base font-semibold text-slate-950">
+          <span className="inline-flex items-center gap-2">
+            <Plus className="h-5 w-5 text-primary" aria-hidden="true" />
+            Crear incidencia
+          </span>
+          <span className="text-sm font-medium text-muted group-open:hidden">Abrir</span>
+          <span className="hidden text-sm font-medium text-muted group-open:inline">Cerrar</span>
+        </summary>
+        <div className="mt-4">
+          <IncidentForm
+            profile={profile}
+            lookups={lookups}
+            action={createIncidentAction}
+            submitLabel="Guardar incidencia"
+          />
         </div>
-        <IncidentForm
-          profile={profile}
-          lookups={lookups}
-          action={createIncidentAction}
-          submitLabel="Guardar incidencia"
-        />
-      </section>
+      </details>
+
+      <details className="group rounded-lg border border-border bg-white p-4">
+        <summary className="focus-ring flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-md px-1 text-base font-semibold text-slate-950">
+          <span className="inline-flex items-center gap-2">
+            <SlidersHorizontal className="h-5 w-5 text-primary" aria-hidden="true" />
+            Filtrar incidencias
+          </span>
+          <span className="text-sm font-medium text-muted group-open:hidden">Abrir</span>
+          <span className="hidden text-sm font-medium text-muted group-open:inline">Cerrar</span>
+        </summary>
+        <div className="mt-4">
+          <IncidentFiltersForm filters={filters} lookups={lookups} profile={profile} />
+        </div>
+      </details>
 
       <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-950">Filtrar incidencias</h2>
-          <p className="text-sm text-muted">Filtra por local, zona, responsable, estado, prioridad o fecha.</p>
-        </div>
-        <IncidentFiltersForm filters={filters} lookups={lookups} profile={profile} />
+        <h2 className="text-lg font-semibold text-slate-950">Listado de incidencias</h2>
         <IncidentList incidents={incidents} profile={profile} />
       </section>
     </div>
