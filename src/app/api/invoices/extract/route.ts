@@ -111,10 +111,80 @@ function refineParsedData(parsedData: InvoiceParsedData, fileName: string) {
   return parsedData;
 }
 
-async function extractWithOpenAI(rawText: string, fileName: string): Promise<InvoiceParsedData> {
+function parseOpenAIOutput(payload: {
+  output_text?: string;
+  output?: Array<{ content?: Array<{ text?: string }> }>;
+}) {
+  return payload.output_text || payload.output
+    ?.flatMap((item) => item.content ?? [])
+    .map((item) => item.text)
+    .join("");
+}
+
+async function extractWithOpenAIPdf(buffer: Buffer, fileName: string): Promise<InvoiceParsedData> {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || rawText.trim().length < 40) {
+  if (!apiKey) {
     return {};
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_INVOICE_MODEL || "gpt-4.1-mini",
+      max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
+      input: [
+        {
+          role: "system",
+          content: systemPrompt
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `Archivo: ${fileName}\nLee esta factura PDF y extrae los campos solicitados.`
+            },
+            {
+              type: "input_file",
+              filename: fileName,
+              file_data: `data:application/pdf;base64,${buffer.toString("base64")}`
+            }
+          ]
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "invoice_extraction",
+          schema: invoiceSchema,
+          strict: true
+        }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    return {};
+  }
+
+  const payload = await response.json();
+  const text = parseOpenAIOutput(payload);
+
+  return parseModelJson(text);
+}
+
+async function extractWithOpenAI(rawText: string, fileName: string, buffer?: Buffer): Promise<InvoiceParsedData> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return {};
+  }
+
+  if (rawText.trim().length < 40) {
+    return buffer ? extractWithOpenAIPdf(buffer, fileName) : {};
   }
 
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -152,7 +222,7 @@ async function extractWithOpenAI(rawText: string, fileName: string): Promise<Inv
   }
 
   const payload = await response.json();
-  const text = payload.output_text || payload.output?.flatMap((item: { content?: Array<{ text?: string }> }) => item.content ?? []).map((item: { text?: string }) => item.text).join("");
+  const text = parseOpenAIOutput(payload);
 
   return parseModelJson(text);
 }
@@ -195,7 +265,7 @@ async function extractWithLmStudio(rawText: string, fileName: string): Promise<I
   return parseModelJson(payload.choices?.[0]?.message?.content);
 }
 
-async function extractInvoiceData(rawText: string, fileName: string) {
+async function extractInvoiceData(rawText: string, fileName: string, buffer: Buffer) {
   if (hasDeterministicInvoiceData(rawText)) {
     return {};
   }
@@ -203,15 +273,22 @@ async function extractInvoiceData(rawText: string, fileName: string) {
   const provider = process.env.INVOICE_AI_PROVIDER || (process.env.LM_STUDIO_BASE_URL ? "lmstudio" : "openai");
 
   if (provider === "lmstudio") {
-    return extractWithLmStudio(rawText, fileName);
+    const localResult = await extractWithLmStudio(rawText, fileName);
+    if (Object.keys(localResult).length > 0 || rawText.trim().length >= 40) return localResult;
+    return extractWithOpenAIPdf(buffer, fileName);
   }
 
-  return extractWithOpenAI(rawText, fileName);
+  return extractWithOpenAI(rawText, fileName, buffer);
 }
 
 function hasDeterministicInvoiceData(rawText: string) {
   const hasInvoiceIdentity = /\bfactura\b/i.test(rawText) || /fecha\s+factura/i.test(rawText);
-  const hasTotals = /total\s+factura/i.test(rawText) || /total\s+a\s+pagar/i.test(rawText) || /base\s+imponible/i.test(rawText);
+  const hasTotals =
+    /total\s+factura/i.test(rawText) ||
+    /total\s+a\s+pagar/i.test(rawText) ||
+    /imp\.?\s*total/i.test(rawText) ||
+    /base\s+imponible/i.test(rawText) ||
+    /\bbase\b[\s\S]{0,120}\biva\b/i.test(rawText);
   const hasLines = /c\s*o\s*n\s*c\s*e\s*p\s*t\s*o/i.test(rawText) || /albar[aá]n/i.test(rawText) || /\b(unid|neto|roll|par)\b/i.test(rawText);
   return hasInvoiceIdentity && hasTotals && hasLines;
 }
@@ -293,7 +370,7 @@ export async function POST(request: Request) {
   }
 
   const rawText = await extractPdfText(buffer);
-  const aiData = refineParsedData(await extractInvoiceData(rawText, file.name), file.name);
+  const aiData = refineParsedData(await extractInvoiceData(rawText, file.name, buffer), file.name);
   const lookups = await getLookups();
   const suggestions = buildInvoiceSuggestion({
     fileName: file.name,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { FileText, Save, Wand2 } from "lucide-react";
+import { ChevronDown, FileText, Save, Wand2, X } from "lucide-react";
 import type { Incident, IncidentAttachment, LookupItem, Profile } from "@/lib/types";
 import { canSeePremiumFields } from "@/lib/permissions";
 import type { IncidentFormState } from "@/app/actions/incidents";
@@ -349,6 +349,18 @@ function ZonePicker({
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const selectedItems = useMemo(
+    () => items.filter((item) => selected.includes(item.id)),
+    [items, selected]
+  );
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return items;
+
+    return items.filter((item) => item.name.toLowerCase().includes(normalizedQuery));
+  }, [items, query]);
+
   function toggle(id: string) {
     if (selected.includes(id)) {
       onChange(selected.filter((value) => value !== id));
@@ -358,19 +370,54 @@ function ZonePicker({
   }
 
   return (
-    <div className="rounded-md border border-border bg-white p-2">
-      <div className="flex max-h-40 flex-col gap-1 overflow-auto">
-        {items.map((item) => (
-          <label key={item.id} className="flex min-h-9 items-center gap-2 rounded px-2 text-sm hover:bg-surface-subtle">
-            <input
-              type="checkbox"
-              checked={selected.includes(item.id)}
-              onChange={() => toggle(item.id)}
-            />
-            {item.name}
-          </label>
-        ))}
-      </div>
+    <div className="space-y-2">
+      <details className="group">
+        <summary className="field flex min-h-12 cursor-pointer list-none items-center justify-between gap-3">
+          <span className="truncate">
+            {selectedItems.length > 0 ? `${selectedItems.length} zona${selectedItems.length === 1 ? "" : "s"} seleccionada${selectedItems.length === 1 ? "" : "s"}` : "Selecciona zonas..."}
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted transition group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="mt-2 rounded-md border border-border bg-white p-2 shadow-sm">
+          <input
+            className="field h-10"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar zona..."
+          />
+          <div className="mt-2 flex max-h-56 flex-col gap-1 overflow-auto pr-1">
+            {filteredItems.map((item) => (
+              <label key={item.id} className="flex min-h-10 items-center gap-2 rounded px-2 text-sm hover:bg-surface-subtle">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(item.id)}
+                  onChange={() => toggle(item.id)}
+                />
+                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+              </label>
+            ))}
+            {filteredItems.length === 0 ? <p className="px-2 py-3 text-sm text-muted">No hay zonas con ese nombre.</p> : null}
+          </div>
+        </div>
+      </details>
+      {selectedItems.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {selectedItems.map((item) => (
+            <span key={item.id} className="inline-flex max-w-full items-center gap-1 rounded-full bg-surface-subtle px-2 py-1 text-xs font-medium text-slate-700">
+              <span className="truncate">{item.name}</span>
+              <button
+                type="button"
+                className="focus-ring rounded-full p-0.5 text-muted hover:text-danger"
+                onClick={() => toggle(item.id)}
+                aria-label={`Quitar ${item.name}`}
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
       {selected.length === 0 ? <p className="mt-2 text-xs text-danger">Selecciona al menos una zona.</p> : null}
     </div>
   );

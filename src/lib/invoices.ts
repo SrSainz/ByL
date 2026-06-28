@@ -99,9 +99,32 @@ function findFirstDate(text: string) {
   return normalizeDate(longDate);
 }
 
+function findDateByLabel(text: string) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = normalizeText(lines[index]);
+    if (!/\bfecha\b/.test(normalized) || /\b(comprador|vencimiento|resolucion)\b/.test(normalized)) {
+      continue;
+    }
+
+    const date = findFirstDate(lines[index])
+      ?? findFirstDate(lines[index - 1] ?? "")
+      ?? findFirstDate(lines[index + 1] ?? "");
+
+    if (date) return date;
+  }
+
+  return undefined;
+}
+
 function findInvoiceDate(text: string, parsedData: InvoiceParsedData) {
   const explicit = text.match(/fecha\s+factura\s*:\s*([^\n\t]+)/i)?.[1];
-  return normalizeDate(explicit) ?? findFirstDate(text) ?? normalizeDate(parsedData.invoice_date) ?? normalizeDate(parsedData.fecha_incidencia);
+  return normalizeDate(explicit)
+    ?? findDateByLabel(text)
+    ?? normalizeDate(parsedData.invoice_date)
+    ?? normalizeDate(parsedData.fecha_incidencia)
+    ?? findFirstDate(text);
 }
 
 export function parseInvoiceAmount(value?: string | number | null) {
@@ -140,6 +163,19 @@ function findAmountByLabel(text: string, label: RegExp) {
   return amountsInLine(line ?? "").at(-1);
 }
 
+function findLastAmountByLabel(text: string, label: RegExp) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+  for (const line of [...lines].reverse()) {
+    if (!label.test(line)) continue;
+
+    const amount = amountsInLine(line).at(-1);
+    if (amount != null) return amount;
+  }
+
+  return undefined;
+}
+
 function findFinalEuroAmount(text: string) {
   const matches = [...text.matchAll(/(-?\(?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\)?)\s*(?:€|\u20ac)/g)];
   return parseInvoiceAmount(matches.at(-1)?.[1]);
@@ -148,8 +184,30 @@ function findFinalEuroAmount(text: string) {
 function findSummaryVatLine(text: string) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 
-  for (const line of [...lines].reverse()) {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    const normalized = normalizeText(line);
     const amounts = amountsInLine(line);
+
+    const followingContext = normalizeText(lines.slice(index, index + 8).join(" "));
+    if (amounts.length === 3 && amounts[1] > 0 && amounts[1] <= 30 && /base imponible|cuota i v a|cuota iva/.test(followingContext)) {
+      return {
+        baseAmount: amounts[0],
+        vatRate: amounts[1],
+        vatAmount: amounts[2]
+      };
+    }
+
+    if (/\bbase\b/.test(normalized) && /\biva\b/.test(normalized) && amounts.length >= 2) {
+      return {
+        baseAmount: amounts[0],
+        vatRate: parseInvoiceAmount(line.match(/\biva\s+(\d{1,2}(?:[.,]\d+)?)\s*%/i)?.[1]),
+        vatAmount: amounts.at(-1)
+      };
+    }
+
+    if (!/\b(base|iva)\b/.test(normalized)) continue;
+
     if (amounts.length === 3 && amounts[1] > 0 && amounts[1] <= 30) {
       return {
         baseAmount: amounts[0],
@@ -169,18 +227,28 @@ function findFirstAmount(text: string) {
 }
 
 function findVatRate(text: string) {
-  const match = text.match(/i\.?\s*v\.?\s*a\.?\s*\(\s*(\d{1,2}(?:[.,]\d+)?)\s*%\s*\)/i);
+  const match = text.match(/i\.?\s*v\.?\s*a\.?\s*(?:\(\s*)?(\d{1,2}(?:[.,]\d+)?)\s*%/i);
   return match?.[1]?.replace(",", ".");
 }
 
 function findInvoiceTotals(text: string, parsedData: InvoiceParsedData) {
   const summary = findSummaryVatLine(text);
-  const baseAmount = findAmountByLabel(text, /^total\s+importe\b/i) ?? parseInvoiceAmount(parsedData.invoice_base_amount) ?? summary.baseAmount;
+  const baseAmount =
+    findLastAmountByLabel(text, /^base\b/i) ??
+    findAmountByLabel(text, /^total\s+importe\b/i) ??
+    parseInvoiceAmount(parsedData.invoice_base_amount) ??
+    summary.baseAmount;
   const vatRate = parsedData.vat_rate?.toString() ?? findVatRate(text) ?? (summary.vatRate != null ? String(summary.vatRate) : undefined);
-  const vatAmount = findAmountByLabel(text, /^i\.?\s*v\.?\s*a\.?/i) ?? parseInvoiceAmount(parsedData.vat_amount) ?? summary.vatAmount;
+  const vatAmount =
+    findLastAmountByLabel(text, /^i\.?\s*v\.?\s*a\.?/i) ??
+    findLastAmountByLabel(text, /\biva\b/i) ??
+    parseInvoiceAmount(parsedData.vat_amount) ??
+    summary.vatAmount;
   const totalAmount =
-    findAmountByLabel(text, /^total\s+factura\b/i) ??
-    findAmountByLabel(text, /^total\s+a\s+pagar\b/i) ??
+    findLastAmountByLabel(text, /^imp\.?\s*total\b/i) ??
+    findLastAmountByLabel(text, /^total\s+factura\b/i) ??
+    findLastAmountByLabel(text, /^total\s+a\s+pagar\b/i) ??
+    findLastAmountByLabel(text, /^total\b/i) ??
     findFinalEuroAmount(text) ??
     parseInvoiceAmount(parsedData.importe_factura ?? parsedData.total_amount) ??
     findFirstAmount(text);
@@ -235,7 +303,15 @@ function guessProviderFromFileName(fileName: string) {
   const providerBeforeInvoice = base.match(/(?:^|\s)\d+[.,]?\s+(.+?)\s+(?:fra|factura|f\d+)/i)?.[1];
   const cleaned = cleanProviderName(providerBeforeInvoice || base);
   const tokens = cleaned?.split(/\s+/).filter(Boolean) ?? [];
+  const providerTokens: string[] = [];
 
+  for (const token of tokens) {
+    if (/^(?:fra|factura|f\d+)/i.test(token)) break;
+    if (/^\d/.test(token) && providerTokens.length > 0) break;
+    if (!/^\d+[.,]?$/.test(token)) providerTokens.push(token);
+  }
+
+  if (providerTokens.length > 0) return providerTokens.slice(0, 3).join(" ");
   if (tokens.length > 1) return tokens.slice(0, 4).join(" ");
 
   const provider = tokens.find((token) => /[a-z]/i.test(token) && !/^\d+[.,]?$/.test(token));
@@ -246,12 +322,21 @@ function findProviderName(rawText: string, parsedData: InvoiceParsedData, fileNa
   const parsedProvider = cleanProviderName(parsedData.proveedor_name);
   if (parsedProvider && !/brasa\s+y\s+le/i.test(parsedProvider)) return parsedProvider;
 
-  const footerProvider = rawText.match(/^(.+?\s+(?:S\.?A\.?|S\.?L\.?))\s+CIF\b/im)?.[1];
-  return cleanProviderName(footerProvider) || guessProviderFromFileName(fileName);
+  const headerProvider = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+    .find((line) => /(?:^|[\s,])S\.?\s*(?:A|L)\.?(?:$|[\s,])/i.test(line) && !/brasa\s+y\s+le/i.test(line) && !/^recogido\s+por/i.test(line));
+  const footerProvider = rawText.match(/^(.+?\s+(?:S\.?\s*A\.?|S\.?\s*L\.?))\s+CIF\b/im)?.[1];
+  return cleanProviderName(headerProvider) || cleanProviderName(footerProvider) || guessProviderFromFileName(fileName);
 }
 
 function findInvoiceNumber(text: string, parsedData: InvoiceParsedData) {
   if (parsedData.invoice_number) return parsedData.invoice_number.trim();
+
+  const beforeLabel = text.match(/(?:^|\n)[ \t]*([A-Z0-9][A-Z0-9./-]{1,})[ \t]+(?:n[^\s]*[ \t]*)?factura\s*:/i)?.[1]?.trim();
+  if (beforeLabel) return beforeLabel;
 
   const inline = text.match(/(?:n[ºo]\s*)?factura\s*:\s*([^\n\t]+)/i)?.[1]?.trim();
   if (inline) return inline.split(/\s{2,}|\t|fecha\s+factura/i)[0]?.trim();
@@ -285,29 +370,37 @@ function extractConceptBlock(text: string, parsedData: InvoiceParsedData) {
 
 function extractInvoiceLines(text: string) {
   const lines = text.split(/\r?\n/).map((line) => line.replace(/\t+/g, " ").replace(/\s{2,}/g, " ").trim());
-  const start = lines.findIndex((line) => normalizeText(line).startsWith("albaran"));
-  const relevant = start >= 0 ? lines.slice(start) : lines;
+  const starts = [
+    lines.findIndex((line) => normalizeText(line).startsWith("albaran")),
+    lines.findIndex((line) => /pedido\s+codigo\s+descripcion/i.test(normalizeText(line))),
+    lines.findIndex((line) => /codigo\s+descripcion/i.test(normalizeText(line)))
+  ].filter((index) => index >= 0);
+  const start = starts.length > 0 ? Math.min(...starts) : -1;
+  const startsAtAlbaran = start >= 0 && normalizeText(lines[start]).startsWith("albaran");
+  const relevant = start >= 0 ? lines.slice(startsAtAlbaran ? start : start + 1) : lines;
   const selected: string[] = [];
 
   for (const line of relevant) {
     const normalized = normalizeText(line);
     if (!line || selected.includes(line)) continue;
+    if (/^(base|imp total|total factura|total a pagar|forma de pago|vencimiento|datos bancarios|datos fiscales|negocio y condiciones)/i.test(normalized)) break;
     if (/^--/.test(line) || /^\d{5}\s/.test(line)) continue;
-    if (/^(pagina|codigo descripcion|base imponible|forma de pago|suma|pagare|iban|vencimientos|ferreteria|--)/i.test(normalized)) continue;
-    if (/^(recogido por|cod cliente|brasa y lena|c i f|paseo|madrid|pozuelo)/i.test(normalized)) continue;
+    if (/^(pagina|codigo descripcion|pedido su|ud dto neto|ud total|suma|pagare|iban|vencimientos|ferreteria|eunasa accesorios|--)/i.test(normalized)) continue;
+    if (/^(recogido por|cod cliente|cliente|brasa y lena|c i f|nif|a 813|c resina|tel|paseo|madrid|pozuelo|espana|inscrita)/i.test(normalized)) continue;
     if (/^n factura|^fecha factura/.test(normalized)) continue;
     if (/^\d+[.,]\d{2}\s+\d+[.,]\d{2}\s+\d+[.,]\d{2}$/.test(line)) continue;
 
     if (
       normalized.startsWith("albaran") ||
+      /^\d{1,2}\/\d{1,2}\/20\d{2}\b/.test(line) ||
       /^\*\s+/.test(line) ||
-      /\b(unid|neto|roll|par|pz|ud)\b/i.test(normalized) ||
+      /\b(unid|unidades|neto|roll|par|pz|ud|grifo|termopar|cesta|freidora|cocina|gas|mando|tuerca)\b/i.test(normalized) ||
       (selected.length > 0 && !/^\d+[.,]\d{2}\s*/.test(line))
     ) {
       selected.push(line);
     }
 
-    if (selected.length >= 35) {
+    if (selected.length >= 45) {
       selected.push("...");
       break;
     }
