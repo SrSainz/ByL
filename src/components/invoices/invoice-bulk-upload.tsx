@@ -19,7 +19,7 @@ export function InvoiceBulkUpload() {
     }
 
     setUploading(true);
-    setStatus(`Subiendo y analizando ${files.length} factura${files.length === 1 ? "" : "s"}...`);
+    setStatus(`Leyendo ${files.length} factura${files.length === 1 ? "" : "s"}...`);
     setError("");
 
     let ok = 0;
@@ -37,13 +37,13 @@ export function InvoiceBulkUpload() {
       if (response.ok) {
         ok += 1;
       } else {
-        failed.push(`${file.name}: ${result.message || "no se ha podido analizar"}`);
+        failed.push(`${file.name}: ${result.message || "no se ha podido leer"}`);
       }
     }
 
     setUploading(false);
     setFiles([]);
-    setStatus(ok > 0 ? `${ok} factura${ok === 1 ? "" : "s"} guardada${ok === 1 ? "" : "s"} en pendientes.` : "");
+    setStatus(ok > 0 ? `${ok} factura${ok === 1 ? "" : "s"} preparada${ok === 1 ? "" : "s"} para revisar.` : "");
     setError(failed.join("\n"));
     router.refresh();
   }
@@ -52,14 +52,14 @@ export function InvoiceBulkUpload() {
     <section className="mb-5 rounded-lg border border-border bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-950">Subir facturas para revisar después</h2>
+          <h2 className="text-base font-semibold text-slate-950">Subir facturas</h2>
           <p className="mt-1 text-sm text-muted">
-            Puedes cargar varias facturas de golpe. Quedarán guardadas en pendientes para crear o completar incidencias más tarde.
+            Selecciona uno o varios PDF. La app leerá los datos y los dejará listos para crear incidencias.
           </p>
         </div>
         <Button type="button" onClick={uploadInvoices} disabled={uploading}>
           <UploadCloud className="h-4 w-4" aria-hidden="true" />
-          {uploading ? "Subiendo..." : "Subir y analizar"}
+          {uploading ? "Leyendo..." : "Subir y leer"}
         </Button>
       </div>
       <input
