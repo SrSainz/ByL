@@ -210,14 +210,18 @@ async function extractInvoiceData(rawText: string, fileName: string) {
 }
 
 function hasDeterministicInvoiceData(rawText: string) {
-  return /c\s*o\s*n\s*c\s*e\s*p\s*t\s*o/i.test(rawText) && /total\s+factura/i.test(rawText) && /\bfactura\b/i.test(rawText);
+  const hasInvoiceIdentity = /\bfactura\b/i.test(rawText) || /fecha\s+factura/i.test(rawText);
+  const hasTotals = /total\s+factura/i.test(rawText) || /total\s+a\s+pagar/i.test(rawText) || /base\s+imponible/i.test(rawText);
+  const hasLines = /c\s*o\s*n\s*c\s*e\s*p\s*t\s*o/i.test(rawText) || /albar[aá]n/i.test(rawText) || /\b(unid|neto|roll|par)\b/i.test(rawText);
+  return hasInvoiceIdentity && hasTotals && hasLines;
 }
 
 async function getLookups() {
   const admin = getSupabaseAdmin();
-  const [locals, zones, providers, priorities, statuses] = await Promise.all([
+  const [locals, zones, responsables, providers, priorities, statuses] = await Promise.all([
     admin.from("locals").select("*"),
     admin.from("zones").select("*"),
+    admin.from("responsables_aviso").select("*"),
     admin.from("providers").select("*"),
     admin.from("priorities").select("*"),
     admin.from("statuses").select("*")
@@ -226,6 +230,7 @@ async function getLookups() {
   return {
     locals: (locals.data ?? []) as LookupItem[],
     zones: (zones.data ?? []) as LookupItem[],
+    responsables: (responsables.data ?? []) as LookupItem[],
     providers: (providers.data ?? []) as LookupItem[],
     priorities: (priorities.data ?? []) as LookupItem[],
     statuses: (statuses.data ?? []) as LookupItem[]
@@ -300,7 +305,8 @@ export async function POST(request: Request) {
     ...aiData,
     fecha_incidencia: suggestions.fecha_incidencia ?? aiData.fecha_incidencia ?? null,
     descripcion: suggestions.descripcion ?? aiData.descripcion ?? null,
-    importe_factura: suggestions.importe_factura ?? aiData.importe_factura ?? null
+    importe_factura: suggestions.importe_factura ?? aiData.importe_factura ?? null,
+    total_amount: suggestions.importe_factura ?? aiData.total_amount ?? null
   };
 
   const extraction = await admin

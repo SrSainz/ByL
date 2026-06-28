@@ -1,5 +1,6 @@
-import { FileText, Trash2 } from "lucide-react";
+import { FileText, PlusCircle, Trash2 } from "lucide-react";
 import { dismissAttachmentAction } from "@/app/actions/incidents";
+import { InvoiceBulkUpload } from "@/components/invoices/invoice-bulk-upload";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,6 +18,7 @@ export default async function InvoiceInboxPage() {
         title="Facturas pendientes"
         description="Revisa PDFs importados o leidos que todavia no estan vinculados a una incidencia."
       />
+      <InvoiceBulkUpload />
 
       {attachments.length === 0 ? (
         <EmptyState title="No hay facturas pendientes" description="Cuando importes o leas PDFs apareceran aqui hasta vincularlos o descartarlos." />
@@ -35,6 +37,10 @@ export default async function InvoiceInboxPage() {
                     <p className="text-sm text-muted">{Math.round(attachment.size_bytes / 1024)} KB · {attachment.created_at}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <ButtonLink href={`/incidents/new?attachment_id=${attachment.id}`} variant="primary">
+                      <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                      Crear incidencia
+                    </ButtonLink>
                     <ButtonLink href={`/api/invoices/${attachment.id}/download`} variant="secondary" target="_blank">
                       <FileText className="h-4 w-4" aria-hidden="true" />
                       Ver PDF

@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { isPremiumRole } from "@/lib/permissions";
-import type { Incident, IncidentFilters, LookupItem, LookupTable, Notification, Profile } from "@/lib/types";
+import type { Incident, IncidentAttachment, IncidentFilters, LookupItem, LookupTable, Notification, Profile } from "@/lib/types";
 
 export const INCIDENT_SELECT = `
   *,
@@ -146,6 +146,26 @@ export async function getPendingInvoiceAttachments(profile: Profile) {
   }
 
   return (data ?? []);
+}
+
+export async function getInvoiceAttachmentById(profile: Profile, id: string) {
+  const supabase = await createClient();
+  let query = supabase
+    .from("incident_attachments")
+    .select("*,invoice_extractions(*)")
+    .eq("id", id);
+
+  if (!isPremiumRole(profile.role)) {
+    query = query.eq("uploaded_by", profile.id);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as IncidentAttachment | null;
 }
 
 export async function getStatusByName(name: string) {

@@ -20,6 +20,7 @@ type Suggestions = {
   fecha_incidencia?: string;
   local_id?: string;
   zona_ids?: string[];
+  responsable_id?: string;
   descripcion?: string;
   proveedor_id?: string;
   prioridad_id?: string;
@@ -32,77 +33,116 @@ export function IncidentForm({
   lookups,
   incident,
   action,
-  submitLabel
+  submitLabel,
+  initialSuggestions,
+  initialAttachments
 }: {
   profile: Profile;
   lookups: Lookups;
   incident?: Incident | null;
   action: (state: IncidentFormState, formData: FormData) => Promise<IncidentFormState>;
   submitLabel: string;
+  initialSuggestions?: Suggestions;
+  initialAttachments?: IncidentAttachment[];
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const showAdmin = canSeePremiumFields(profile.role);
   const initialZoneIds = useMemo(() => {
     const related = incident?.incident_zones?.map((item) => item.zona_id).filter(Boolean) ?? [];
-    return related.length > 0 ? related : incident?.zona_id ? [incident.zona_id] : [];
-  }, [incident]);
+    if (related.length > 0) return related;
+    if (incident?.zona_id) return [incident.zona_id];
+    return initialSuggestions?.zona_ids ?? [];
+  }, [incident, initialSuggestions]);
 
-  const [fecha, setFecha] = useState(incident?.fecha_incidencia ?? "");
-  const [localId, setLocalId] = useState(incident?.local_id ?? "");
+  const [fecha, setFecha] = useState(incident?.fecha_incidencia ?? initialSuggestions?.fecha_incidencia ?? "");
+  const [localId, setLocalId] = useState(incident?.local_id ?? initialSuggestions?.local_id ?? "");
   const [zoneIds, setZoneIds] = useState<string[]>(initialZoneIds);
-  const [responsableId, setResponsableId] = useState(incident?.responsable_aviso_id ?? "");
-  const [descripcion, setDescripcion] = useState(incident?.descripcion ?? "");
-  const [proveedorId, setProveedorId] = useState(incident?.proveedor_id ?? "");
-  const [prioridadId, setPrioridadId] = useState(incident?.prioridad_id ?? "");
-  const [importeFactura, setImporteFactura] = useState(incident?.importe_factura?.toString() ?? "");
+  const [responsableId, setResponsableId] = useState(incident?.responsable_aviso_id ?? initialSuggestions?.responsable_id ?? "");
+  const [descripcion, setDescripcion] = useState(incident?.descripcion ?? initialSuggestions?.descripcion ?? "");
+  const [proveedorId, setProveedorId] = useState(incident?.proveedor_id ?? initialSuggestions?.proveedor_id ?? "");
+  const [prioridadId, setPrioridadId] = useState(incident?.prioridad_id ?? initialSuggestions?.prioridad_id ?? "");
+  const [importeFactura, setImporteFactura] = useState(
+    incident?.importe_factura?.toString() ?? (initialSuggestions?.importe_factura != null ? String(initialSuggestions.importe_factura) : "")
+  );
   const [fechaResolucion, setFechaResolucion] = useState(incident?.fecha_resolucion ?? "");
-  const [estadoId, setEstadoId] = useState(incident?.estado_id ?? "");
-  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [estadoId, setEstadoId] = useState(incident?.estado_id ?? initialSuggestions?.estado_id ?? "");
+  const [invoiceFiles, setInvoiceFiles] = useState<File[]>([]);
   const [invoiceStatus, setInvoiceStatus] = useState<string>("");
   const [invoiceError, setInvoiceError] = useState<string>("");
-  const [attachments, setAttachments] = useState<IncidentAttachment[]>(incident?.incident_attachments ?? []);
+  const [attachments, setAttachments] = useState<IncidentAttachment[]>([
+    ...(incident?.incident_attachments ?? []),
+    ...(initialAttachments ?? [])
+  ]);
   const [readingInvoice, setReadingInvoice] = useState(false);
 
   async function readInvoice() {
-    if (!invoiceFile) {
-      setInvoiceError("Adjunta primero una factura PDF.");
+    if (invoiceFiles.length === 0) {
+      setInvoiceError("Adjunta primero una o varias facturas PDF.");
       return;
     }
 
     setReadingInvoice(true);
     setInvoiceError("");
-    setInvoiceStatus("Leyendo factura...");
+    setInvoiceStatus(`Analizando ${invoiceFiles.length} factura${invoiceFiles.length === 1 ? "" : "s"}...`);
 
-    const payload = new FormData();
-    payload.set("invoice", invoiceFile);
-    const response = await fetch("/api/invoices/extract", {
-      method: "POST",
-      body: payload
-    });
-    const result = await response.json();
+    const successful: Array<{ attachment: IncidentAttachment; suggestions: Suggestions }> = [];
+    const failed: string[] = [];
+
+    for (const file of invoiceFiles) {
+      const payload = new FormData();
+      payload.set("invoice", file);
+      const response = await fetch("/api/invoices/extract", {
+        method: "POST",
+        body: payload
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        failed.push(`${file.name}: ${result.message || "no se ha podido analizar"}`);
+      } else {
+        successful.push({
+          attachment: result.attachment,
+          suggestions: (result.suggestions || {}) as Suggestions
+        });
+      }
+    }
 
     setReadingInvoice(false);
 
-    if (!response.ok) {
-      setInvoiceStatus("");
-      setInvoiceError(result.message || "No se ha podido leer la factura.");
-      return;
+    if (successful.length > 0) {
+      const first = successful[0].suggestions;
+      const descriptions = successful.map((item) => item.suggestions.descripcion).filter(Boolean);
+      const total = successful.reduce((sum, item) => {
+        const amount = item.suggestions.importe_factura;
+        if (amount === undefined || amount === null) return sum;
+        const parsed = Number(String(amount).replace(",", "."));
+        return Number.isFinite(parsed) ? sum + parsed : sum;
+      }, 0);
+
+      if (!fecha && first.fecha_incidencia) setFecha(first.fecha_incidencia);
+      if (!localId && first.local_id) setLocalId(first.local_id);
+      if (zoneIds.length === 0 && first.zona_ids?.length) setZoneIds(first.zona_ids);
+      if (!responsableId && first.responsable_id) setResponsableId(first.responsable_id);
+      if (!proveedorId && first.proveedor_id) setProveedorId(first.proveedor_id);
+      if (!prioridadId && first.prioridad_id) setPrioridadId(first.prioridad_id);
+      if (!estadoId && first.estado_id) setEstadoId(first.estado_id);
+      if (descriptions.length > 0) {
+        setDescripcion((current) => {
+          const nextDescription = descriptions.join("\n\n---\n\n");
+          return current.trim() ? `${current.trim()}\n\n--- Facturas añadidas ---\n${nextDescription}` : nextDescription;
+        });
+      }
+      if (showAdmin && total !== 0 && !importeFactura) {
+        setImporteFactura(String(Math.round(total * 100) / 100));
+      }
+      setAttachments((current) => {
+        const known = new Set(current.map((attachment) => attachment.id));
+        return [...current, ...successful.map((item) => item.attachment).filter((attachment) => !known.has(attachment.id))];
+      });
     }
 
-    const suggestions = (result.suggestions || {}) as Suggestions;
-    if (suggestions.fecha_incidencia) setFecha(suggestions.fecha_incidencia);
-    if (suggestions.local_id) setLocalId(suggestions.local_id);
-    if (suggestions.zona_ids?.length) setZoneIds(suggestions.zona_ids);
-    if (suggestions.descripcion) setDescripcion(suggestions.descripcion);
-    if (suggestions.proveedor_id) setProveedorId(suggestions.proveedor_id);
-    if (suggestions.prioridad_id) setPrioridadId(suggestions.prioridad_id);
-    if (suggestions.importe_factura !== undefined && suggestions.importe_factura !== null) {
-      setImporteFactura(String(suggestions.importe_factura).replace(",", "."));
-    }
-    if (suggestions.estado_id) setEstadoId(suggestions.estado_id);
-
-    setAttachments((current) => [...current, result.attachment]);
-    setInvoiceStatus("Factura leida. Revisa los datos antes de guardar.");
+    setInvoiceStatus(successful.length > 0 ? `${successful.length} factura${successful.length === 1 ? "" : "s"} analizada${successful.length === 1 ? "" : "s"} y guardada${successful.length === 1 ? "" : "s"}.` : "");
+    setInvoiceError(failed.length > 0 ? failed.join("\n") : "");
   }
 
   return (
@@ -117,18 +157,19 @@ export function IncidentForm({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-950">Factura</h3>
-            <p className="text-xs text-muted">Adjunta un PDF para rellenar datos automaticamente. Revisa siempre antes de guardar.</p>
+            <p className="text-xs text-muted">Adjunta uno o varios PDF para guardarlos y rellenar datos automaticamente. Revisa siempre antes de guardar.</p>
           </div>
           <Button type="button" variant="secondary" onClick={readInvoice} disabled={readingInvoice}>
             <Wand2 className="h-4 w-4" aria-hidden="true" />
-            {readingInvoice ? "Leyendo..." : "Leer factura"}
+            {readingInvoice ? "Analizando..." : "Analizar facturas"}
           </Button>
         </div>
         <input
           className="field"
           type="file"
           accept="application/pdf,.pdf"
-          onChange={(event) => setInvoiceFile(event.target.files?.[0] ?? null)}
+          multiple
+          onChange={(event) => setInvoiceFiles(Array.from(event.target.files ?? []))}
         />
         {invoiceStatus ? <p className="text-sm text-success">{invoiceStatus}</p> : null}
         {invoiceError ? <p className="text-sm text-danger">{invoiceError}</p> : null}
@@ -139,6 +180,7 @@ export function IncidentForm({
                 key={attachment.id}
                 className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 href={`/api/invoices/${attachment.id}/download`}
+                rel="noreferrer"
                 target="_blank"
               >
                 <FileText className="h-4 w-4" aria-hidden="true" />

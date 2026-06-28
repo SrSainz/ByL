@@ -105,7 +105,7 @@ export type InvoiceParsedData = {
   invoice_base_amount?: string | number | null;
   vat_amount?: string | number | null;
   vat_rate?: string | number | null;
-  total_amount?: string | null;
+  total_amount?: string | number | null;
   confidence?: number | null;
 };
 

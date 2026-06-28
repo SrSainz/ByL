@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   description: "Aplicación PWA para registrar y gestionar incidencias.",
   manifest: "/manifest.webmanifest",
   applicationName: "ByL Mantenimiento",
+  icons: {
+    icon: "/logo-byl.png",
+    apple: "/icons/icon-192.png"
+  },
   formatDetection: {
     telephone: false
   },
