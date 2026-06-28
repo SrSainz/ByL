@@ -17,16 +17,22 @@ export const metadata: Metadata = {
   title: "Gestión de incidencias",
   description: "Aplicación PWA para registrar y gestionar incidencias.",
   manifest: "/manifest.webmanifest",
+  applicationName: "ByL Mantenimiento",
+  formatDetection: {
+    telephone: false
+  },
   appleWebApp: {
     capable: true,
-    title: "Incidencias"
+    title: "ByL Mantenimiento",
+    statusBarStyle: "default"
   }
 };
 
 export const viewport: Viewport = {
   themeColor: "#f1eee6",
   width: "device-width",
-  initialScale: 1
+  initialScale: 1,
+  viewportFit: "cover"
 };
 
 export default function RootLayout({

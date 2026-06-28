@@ -6,11 +6,11 @@ import {
   Home,
   ListChecks,
   LogOut,
-  Menu,
   Settings2,
   User,
   Users
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { signOutAction } from "@/app/actions/auth";
 import { GuidedTour } from "@/components/layout/guided-tour";
 import { HelpMenu } from "@/components/layout/help-menu";
@@ -19,7 +19,16 @@ import { getInitials } from "@/lib/format";
 import { isAdmin, isPremiumRole } from "@/lib/permissions";
 import type { Profile } from "@/lib/types";
 
-const navBase = "flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100";
+const navBase = "focus-ring flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100";
+const mobileNavBase =
+  "focus-ring flex min-h-14 flex-col items-center justify-center gap-1 rounded-md px-1 text-[11px] font-semibold text-slate-700 hover:bg-surface-subtle";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  tour: string;
+};
 
 export function AppShell({
   profile,
@@ -30,10 +39,31 @@ export function AppShell({
   unreadCount: number;
   children: React.ReactNode;
 }) {
+  const navItems: NavItem[] = [
+    { href: "/dashboard", label: "Inicio", icon: Home, tour: "nav-dashboard" },
+    { href: "/incidents", label: "Incidencias", icon: ListChecks, tour: "nav-incidents" }
+  ];
+
+  if (isPremiumRole(profile.role)) {
+    navItems.push({ href: "/notifications", label: "Notificaciones", icon: Bell, tour: "nav-notifications" });
+  }
+
+  if (isAdmin(profile.role)) {
+    navItems.push(
+      { href: "/admin/users", label: "Usuarios", icon: Users, tour: "nav-users" },
+      { href: "/admin/lists", label: "Listas", icon: Settings2, tour: "nav-lists" },
+      { href: "/admin/invoices", label: "Facturas", icon: FileText, tour: "nav-invoices" }
+    );
+  } else {
+    navItems.push({ href: "/profile", label: "Perfil", icon: User, tour: "nav-profile" });
+  }
+
+  const mobileItems = navItems.filter((item) => item.href !== "/notifications").slice(0, 5);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+    <div className="min-h-dvh bg-background">
+      <header className="safe-top sticky top-0 z-30 border-b border-border bg-white/95 backdrop-blur">
+        <div className="mobile-safe-x mx-auto flex max-w-7xl items-center justify-between gap-3 py-3">
           <Link href="/dashboard" className="flex items-center gap-3 font-semibold text-slate-950">
             <Image
               alt="Logo APP Mantenimiento ByL"
@@ -86,59 +116,44 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-4 px-4 py-4 md:grid-cols-[240px_1fr]">
-        <aside className="hidden rounded-lg border border-border bg-white p-2 md:block">
+      <div className="mobile-safe-x mx-auto grid max-w-7xl gap-4 py-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:grid-cols-[240px_1fr] md:pb-4">
+        <aside className="sticky top-[calc(5rem+env(safe-area-inset-top))] hidden h-fit rounded-lg border border-border bg-white p-2 md:block">
           <nav className="space-y-1">
-            <Link href="/dashboard" className={navBase} data-tour="nav-dashboard">
-              <Home className="h-4 w-4" aria-hidden="true" />
-              Inicio
-            </Link>
-            <Link href="/incidents" className={navBase} data-tour="nav-incidents">
-              <ListChecks className="h-4 w-4" aria-hidden="true" />
-              Incidencias
-            </Link>
-            {isPremiumRole(profile.role) ? (
-              <Link href="/notifications" className={navBase} data-tour="nav-notifications">
-                <Bell className="h-4 w-4" aria-hidden="true" />
-                Notificaciones
-              </Link>
-            ) : null}
-            {isAdmin(profile.role) ? (
-              <>
-                <Link href="/admin/users" className={navBase} data-tour="nav-users">
-                  <Users className="h-4 w-4" aria-hidden="true" />
-                  Usuarios
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.href} href={item.href} className={navBase} data-tour={item.tour}>
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {item.label}
                 </Link>
-                <Link href="/admin/lists" className={navBase} data-tour="nav-lists">
-                  <Settings2 className="h-4 w-4" aria-hidden="true" />
-                  Listas
-                </Link>
-                <Link href="/admin/invoices" className={navBase} data-tour="nav-invoices">
-                  <FileText className="h-4 w-4" aria-hidden="true" />
-                  Facturas
-                </Link>
-              </>
-            ) : null}
+              );
+            })}
           </nav>
         </aside>
 
-        <details className="rounded-lg border border-border bg-white p-2 md:hidden">
-          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-2 text-sm font-semibold">
-            <Menu className="h-5 w-5" aria-hidden="true" />
-            Menú
-          </summary>
-          <nav className="mt-2 space-y-1">
-            <Link href="/dashboard" className={navBase} data-tour="nav-dashboard">Inicio</Link>
-            <Link href="/incidents" className={navBase} data-tour="nav-incidents">Incidencias</Link>
-            {isPremiumRole(profile.role) ? <Link href="/notifications" className={navBase} data-tour="nav-notifications">Notificaciones</Link> : null}
-            {isAdmin(profile.role) ? <Link href="/admin/users" className={navBase} data-tour="nav-users">Usuarios</Link> : null}
-            {isAdmin(profile.role) ? <Link href="/admin/lists" className={navBase} data-tour="nav-lists">Listas</Link> : null}
-            {isAdmin(profile.role) ? <Link href="/admin/invoices" className={navBase} data-tour="nav-invoices">Facturas</Link> : null}
-          </nav>
-        </details>
-
         <main className="min-w-0">{children}</main>
       </div>
+
+      <nav
+        aria-label="Navegación principal"
+        className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/95 px-2 pt-2 shadow-[0_-12px_30px_rgba(23,23,23,0.08)] backdrop-blur md:hidden"
+      >
+        <div
+          className="mx-auto grid max-w-lg gap-1"
+          style={{ gridTemplateColumns: `repeat(${mobileItems.length}, minmax(0, 1fr))` }}
+        >
+          {mobileItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.href} href={item.href} className={mobileNavBase} data-tour={item.tour}>
+                <Icon className="h-5 w-5" aria-hidden="true" />
+                <span className="max-w-full truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
       <GuidedTour role={profile.role} />
       <PasswordChangeGuard mustChange={profile.must_change_password} />
     </div>

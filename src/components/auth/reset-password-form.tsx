@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { resetPasswordAction, type AuthState } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 
@@ -15,13 +16,27 @@ export function ResetPasswordForm() {
         <label className="label" htmlFor="email">
           Email
         </label>
-        <input className="field" id="email" name="email" type="email" autoComplete="email" required />
+        <input
+          className="field"
+          id="email"
+          name="email"
+          type="email"
+          autoCapitalize="none"
+          autoComplete="email"
+          autoCorrect="off"
+          inputMode="email"
+          placeholder="tu@email.com"
+          required
+        />
       </div>
       {state.error ? <p className="helper-error">{state.error}</p> : null}
       {state.success ? <p className="text-sm text-success">{state.success}</p> : null}
       <Button className="w-full" type="submit" disabled={pending}>
-        {pending ? "Enviando..." : "Enviar enlace"}
+        {pending ? "Enviando..." : "Enviar enlace de recuperación"}
       </Button>
+      <Link className="block text-center text-sm font-semibold text-primary" href="/login">
+        Volver al acceso
+      </Link>
     </form>
   );
 }

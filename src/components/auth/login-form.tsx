@@ -18,7 +18,18 @@ export function LoginForm() {
         <label className="label" htmlFor="email">
           Email
         </label>
-        <input className="field" id="email" name="email" type="email" autoComplete="email" required />
+        <input
+          className="field"
+          id="email"
+          name="email"
+          type="email"
+          autoCapitalize="none"
+          autoComplete="email"
+          autoCorrect="off"
+          inputMode="email"
+          placeholder="tu@email.com"
+          required
+        />
       </div>
       <div className="space-y-2">
         <label className="label" htmlFor="password">
@@ -26,16 +37,19 @@ export function LoginForm() {
         </label>
         <div className="relative">
           <input
-            className="field pr-11"
+            className="field pr-12"
             id="password"
             name="password"
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
+            placeholder="Tu contraseña"
             required
           />
           <button
             aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-            className="focus-ring absolute right-1.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-subtle hover:text-foreground"
+            aria-pressed={showPassword}
+            className="focus-ring absolute right-1.5 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-subtle hover:text-foreground"
+            title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
             type="button"
             onClick={() => setShowPassword((value) => !value)}
           >
@@ -46,14 +60,16 @@ export function LoginForm() {
       {state.error ? <p className="helper-error">{state.error}</p> : null}
       <Button className="w-full" type="submit" disabled={pending}>
         <LogIn className="h-4 w-4" aria-hidden="true" />
-        {pending ? "Comprobando acceso..." : "Entrar a la aplicación"}
+        {pending ? "Comprobando acceso..." : "Entrar"}
       </Button>
-      <Link className="block text-center text-sm font-medium text-primary" href="/reset-password">
-        No recuerdo mi contraseña
-      </Link>
-      <p className="text-center text-xs text-muted">
-        Si no tienes acceso, pide a un administrador que cree tu usuario.
-      </p>
+      <div className="flex flex-col items-center gap-2 text-sm">
+        <Link className="font-semibold text-primary" href="/reset-password">
+          He olvidado mi contraseña
+        </Link>
+        <p className="text-center text-xs leading-5 text-muted">
+          Si no tienes acceso, pide a un administrador que cree tu usuario.
+        </p>
+      </div>
     </form>
   );
 }

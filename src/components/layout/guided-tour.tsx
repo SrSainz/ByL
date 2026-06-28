@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import type { UserRole } from "@/lib/types";
 
 type Step = {
@@ -9,64 +10,91 @@ type Step = {
   body: string;
 };
 
+type TargetRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  right: number;
+  bottom: number;
+};
+
 const roleSteps: Record<UserRole, Step[]> = {
   basic: [
     {
       selector: "[data-tour='nav-dashboard']",
       title: "Inicio",
-      body: "Aqui ves tus incidencias, cuantas siguen abiertas y las ultimas que has creado."
+      body: "Aquí ves el resumen de tus incidencias, las abiertas, las resueltas y las últimas que has creado."
     },
     {
       selector: "[data-tour='nav-incidents']",
       title: "Incidencias",
-      body: "En la parte superior puedes crear una incidencia y en la inferior consultar tu historial."
+      body: "Entra aquí para registrar una incidencia nueva y consultar tu historial. En móvil lo tienes siempre en la barra inferior."
     },
     {
       selector: "[data-tour='invoice-upload']",
-      title: "Factura",
-      body: "Adjunta un PDF y pulsa Leer factura para rellenar datos automaticamente. Revisa todo antes de guardar."
+      title: "Factura PDF",
+      body: "Puedes adjuntar una factura y usar Leer factura. La app propone datos, pero tú siempre revisas antes de guardar."
     },
     {
       selector: "[data-tour='incident-form']",
-      title: "Datos obligatorios",
-      body: "Rellena fecha, local, una o varias zonas, responsable y descripcion. Solo podras editar mientras este en estado Nueva."
+      title: "Guardar aviso",
+      body: "Rellena fecha, local, una o varias zonas, responsable y descripción. Si el estado sigue en Nueva podrás editarla."
+    },
+    {
+      selector: "[data-tour='help-button']",
+      title: "Ayuda e instalación",
+      body: "Este botón abre la guía, explica tu rol y muestra cómo instalar la web como app en móvil o Windows."
     }
   ],
   admin: [
     {
       selector: "[data-tour='nav-dashboard']",
       title: "Inicio admin",
-      body: "Tienes vision global de incidencias, estados, prioridades y notificaciones pendientes."
+      body: "Tienes visión global de incidencias, estados, prioridades y avisos pendientes."
     },
     {
       selector: "[data-tour='nav-incidents']",
-      title: "Gestion de incidencias",
-      body: "Puedes ver todas las incidencias, usar filtros, editar campos de seguimiento y adjuntar facturas."
+      title: "Gestión de incidencias",
+      body: "Puedes ver todas las incidencias, filtrar, editar seguimiento, cambiar estados y adjuntar facturas."
     },
     {
       selector: "[data-tour='nav-users'], [data-tour='user-management']",
       title: "Usuarios",
-      body: "Crea usuarios, asigna rol basic o admin, activa o desactiva accesos y registra la contrasena proporcionada."
+      body: "Crea usuarios basic o admin, activa accesos y deja registrada la contraseña proporcionada cuando corresponda."
     },
     {
       selector: "[data-tour='nav-lists']",
-      title: "Listas",
-      body: "Gestiona locales, zonas, responsables, proveedores, prioridades, estados y colores de badges."
+      title: "Listas y colores",
+      body: "Gestiona locales, zonas, responsables, proveedores, prioridades, estados y los colores visibles en los badges."
     },
     {
       selector: "[data-tour='nav-invoices']",
-      title: "Facturas",
-      body: "Revisa PDFs importados o pendientes y descarta los que no deban vincularse a incidencias."
+      title: "Facturas pendientes",
+      body: "Revisa PDFs importados, comprueba la lectura automática y decide si crear, enlazar o descartar cada factura."
+    },
+    {
+      selector: "[data-tour='help-button']",
+      title: "Ayuda por rol",
+      body: "El botón de ayuda resume lo que puede hacer cada usuario y cómo instalar la aplicación."
     }
   ]
 };
 
+function visibleTarget(selector: string) {
+  return Array.from(document.querySelectorAll(selector)).find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+}
+
 export function GuidedTour({ role }: { role: UserRole }) {
   const steps = useMemo(() => roleSteps[role], [role]);
-  const storageKey = `byl-tour-completed-${role}`;
+  const storageKey = `byl-tour-completed-${role}-v2`;
   const [isOpen, setIsOpen] = useState(false);
   const [index, setIndex] = useState(0);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [rect, setRect] = useState<TargetRect | null>(null);
+  const [isCompact, setIsCompact] = useState(false);
 
   const close = useCallback(() => {
     window.localStorage.setItem(storageKey, "true");
@@ -81,7 +109,7 @@ export function GuidedTour({ role }: { role: UserRole }) {
   useEffect(() => {
     const completed = window.localStorage.getItem(storageKey);
     if (!completed) {
-      const timer = window.setTimeout(start, 600);
+      const timer = window.setTimeout(start, 800);
       return () => window.clearTimeout(timer);
     }
   }, [start, storageKey]);
@@ -93,20 +121,36 @@ export function GuidedTour({ role }: { role: UserRole }) {
   }, [start]);
 
   useEffect(() => {
+    const updateCompact = () => setIsCompact(window.innerWidth < 768);
+    updateCompact();
+    window.addEventListener("resize", updateCompact);
+    return () => window.removeEventListener("resize", updateCompact);
+  }, []);
+
+  useEffect(() => {
     if (!isOpen) return;
 
     const update = () => {
-      const element = Array.from(document.querySelectorAll(steps[index]?.selector)).find((candidate) => {
-        const candidateRect = candidate.getBoundingClientRect();
-        return candidateRect.width > 0 && candidateRect.height > 0;
-      });
-      if (element) {
-        const nextRect = element.getBoundingClientRect();
-        setRect(nextRect);
-        element.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-      } else {
+      const selector = steps[index]?.selector;
+      const element = selector ? visibleTarget(selector) : null;
+
+      if (!element) {
         setRect(null);
+        return;
       }
+
+      element.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      window.requestAnimationFrame(() => {
+        const nextRect = element.getBoundingClientRect();
+        setRect({
+          left: nextRect.left,
+          top: nextRect.top,
+          width: nextRect.width,
+          height: nextRect.height,
+          right: nextRect.right,
+          bottom: nextRect.bottom
+        });
+      });
     };
 
     update();
@@ -118,36 +162,59 @@ export function GuidedTour({ role }: { role: UserRole }) {
     };
   }, [index, isOpen, steps]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+      if (event.key === "ArrowRight") setIndex((value) => Math.min(value + 1, steps.length - 1));
+      if (event.key === "ArrowLeft") setIndex((value) => Math.max(value - 1, 0));
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [close, isOpen, steps.length]);
+
   if (!isOpen) {
     return null;
   }
 
   const step = steps[index];
   const isLast = index === steps.length - 1;
-  const highlightStyle = rect
+  const highlightStyle: CSSProperties | undefined = rect
     ? {
-        left: rect.left - 8,
-        top: rect.top - 8,
+        left: Math.max(rect.left - 8, 8),
+        top: Math.max(rect.top - 8, 8),
         width: rect.width + 16,
         height: rect.height + 16
       }
     : undefined;
+  const cardStyle: CSSProperties | undefined =
+    rect && !isCompact
+      ? {
+          left: rect.right + 360 < window.innerWidth ? rect.right + 20 : Math.max(rect.left - 380, 20),
+          top: Math.min(Math.max(rect.top, 88), window.innerHeight - 280)
+        }
+      : undefined;
 
   return (
-    <div className="fixed inset-0 z-40">
-      <div className="absolute inset-0 bg-slate-950/65" />
+    <div aria-modal="true" className="fixed inset-0 z-50" role="dialog">
+      <div className="absolute inset-0 bg-slate-950/70" />
       {highlightStyle ? (
         <div
-          className="pointer-events-none fixed rounded-lg border-2 border-primary bg-white/10 shadow-[0_0_0_9999px_rgba(15,23,42,0.65)]"
+          className="pointer-events-none fixed rounded-lg border-2 border-primary bg-white/10 shadow-[0_0_0_9999px_rgba(15,23,42,0.7)] transition-all duration-200"
           style={highlightStyle}
         />
       ) : null}
-      <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-md rounded-lg border border-border bg-white p-4 shadow-xl sm:bottom-6 sm:left-auto sm:right-6">
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50 mx-auto w-full max-w-md rounded-t-lg border border-border bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl md:bottom-auto md:left-auto md:right-auto md:rounded-lg"
+        style={cardStyle}
+      >
         <p className="text-xs font-semibold uppercase tracking-wide text-primary">
           Paso {index + 1} de {steps.length}
         </p>
         <h2 className="mt-1 text-lg font-semibold text-slate-950">{step.title}</h2>
-        <p className="mt-2 text-sm text-slate-700">{step.body}</p>
+        <p className="mt-2 text-sm leading-6 text-slate-700">{step.body}</p>
         <div className="mt-4 flex flex-wrap justify-between gap-2">
           <button className="focus-ring rounded-md px-3 py-2 text-sm font-semibold text-muted hover:bg-surface-subtle" onClick={close}>
             Omitir
