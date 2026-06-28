@@ -32,7 +32,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 OPENAI_API_KEY=
-OPENAI_INVOICE_MODEL=gpt-4.1-nano
+OPENAI_INVOICE_MODEL=gpt-4.1-mini
 OPENAI_INVOICE_MAX_OUTPUT_TOKENS=700
 INVOICE_AI_PROVIDER=openai
 INVOICE_AI_MAX_TEXT_CHARS=6000
@@ -43,7 +43,7 @@ INVOICE_IMPORT_USER_ID=
 
 `SUPABASE_SERVICE_ROLE_KEY` solo se usa en servidor para operaciones admin y facturas privadas. No debe exponerse en el cliente.
 
-`OPENAI_API_KEY` es opcional. Si existe, la lectura de facturas usa IA para extraer datos estructurados. Por defecto usa `gpt-4.1-nano`, limita el texto enviado con `INVOICE_AI_MAX_TEXT_CHARS` y limita salida con `OPENAI_INVOICE_MAX_OUTPUT_TOKENS` para contener coste. Si no existe, la app guarda el PDF y usa reglas simples sobre texto/nombre de archivo.
+`OPENAI_API_KEY` es opcional. Si existe, la lectura de facturas usa IA para extraer datos estructurados. Por defecto usa `gpt-4.1-mini`, que ofrece mejor lectura que `nano` y sigue muy por debajo de 0,05 USD por factura con los limites actuales. La app limita el texto enviado con `INVOICE_AI_MAX_TEXT_CHARS` y la salida con `OPENAI_INVOICE_MAX_OUTPUT_TOKENS` para contener coste. Si no existe, la app guarda el PDF y usa reglas simples sobre texto/nombre de archivo.
 
 Para lectura local con LM Studio, arranca el servidor local compatible con OpenAI y usa:
 
@@ -160,7 +160,7 @@ En `Incidencias`, aplica filtros y pulsa `Exportar CSV`.
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `NEXT_PUBLIC_APP_URL=https://tu-app.vercel.app`
    - `OPENAI_API_KEY` si quieres lectura inteligente de facturas
-   - `OPENAI_INVOICE_MODEL=gpt-4.1-nano`
+   - `OPENAI_INVOICE_MODEL=gpt-4.1-mini`
    - `OPENAI_INVOICE_MAX_OUTPUT_TOKENS=700`
    - `INVOICE_AI_MAX_TEXT_CHARS=6000`
 4. Despliega.

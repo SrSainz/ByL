@@ -59,7 +59,9 @@ const invoiceSchema = {
 const systemPrompt = [
   "Extrae datos de facturas de mantenimiento.",
   "Devuelve solo JSON valido, sin markdown.",
-  "El importe de una factura rectificativa, abono o devolucion debe ser negativo."
+  "El importe de una factura rectificativa, abono o devolucion debe ser negativo.",
+  "No confundas el cliente BRASA Y LEÑA con el proveedor.",
+  "Si el nombre del archivo contiene un proveedor claro, priorizalo para proveedor_name."
 ].join(" ");
 
 function parseModelJson(text?: string) {
@@ -72,6 +74,30 @@ function parseModelJson(text?: string) {
   } catch {
     return {};
   }
+}
+
+function guessProviderFromFileName(fileName: string) {
+  const base = fileName
+    .replace(/\.pdf$/i, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  const tokens = base.split(/\s+/).filter(Boolean);
+  const provider = tokens.find((token) => /[a-z]/i.test(token) && !/^\d+[.,]?$/.test(token));
+
+  return provider?.replace(/[^\p{L}\p{N}.&]/gu, "") || null;
+}
+
+function refineParsedData(parsedData: InvoiceParsedData, fileName: string) {
+  const guessedProvider = guessProviderFromFileName(fileName);
+  const providerLooksLikeClient = parsedData.proveedor_name
+    ? /brasa\s+y\s+leña/i.test(parsedData.proveedor_name)
+    : false;
+
+  if (guessedProvider && (!parsedData.proveedor_name || providerLooksLikeClient)) {
+    return { ...parsedData, proveedor_name: guessedProvider };
+  }
+
+  return parsedData;
 }
 
 async function extractWithOpenAI(rawText: string, fileName: string): Promise<InvoiceParsedData> {
@@ -87,7 +113,7 @@ async function extractWithOpenAI(rawText: string, fileName: string): Promise<Inv
       authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_INVOICE_MODEL || "gpt-4.1-nano",
+      model: process.env.OPENAI_INVOICE_MODEL || "gpt-4.1-mini",
       max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
       input: [
         {
@@ -243,7 +269,7 @@ export async function POST(request: Request) {
   }
 
   const rawText = await extractPdfText(buffer);
-  const aiData = await extractInvoiceData(rawText, file.name);
+  const aiData = refineParsedData(await extractInvoiceData(rawText, file.name), file.name);
   const lookups = await getLookups();
   const suggestions = buildInvoiceSuggestion({
     fileName: file.name,
