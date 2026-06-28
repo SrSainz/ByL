@@ -28,6 +28,7 @@ const invoiceSchema = {
     fecha_incidencia: { type: ["string", "null"] },
     local_name: { type: ["string", "null"] },
     zona_names: { type: "array", items: { type: "string" } },
+    concept: { type: ["string", "null"] },
     descripcion: { type: ["string", "null"] },
     proveedor_name: { type: ["string", "null"] },
     prioridad_name: { type: ["string", "null"] },
@@ -36,13 +37,17 @@ const invoiceSchema = {
     estado_name: { type: ["string", "null"] },
     invoice_number: { type: ["string", "null"] },
     invoice_date: { type: ["string", "null"] },
-    total_amount: { type: ["string", "null"] },
+    invoice_base_amount: { type: ["number", "string", "null"] },
+    vat_amount: { type: ["number", "string", "null"] },
+    vat_rate: { type: ["number", "string", "null"] },
+    total_amount: { type: ["number", "string", "null"] },
     confidence: { type: ["number", "null"] }
   },
   required: [
     "fecha_incidencia",
     "local_name",
     "zona_names",
+    "concept",
     "descripcion",
     "proveedor_name",
     "prioridad_name",
@@ -51,6 +56,9 @@ const invoiceSchema = {
     "estado_name",
     "invoice_number",
     "invoice_date",
+    "invoice_base_amount",
+    "vat_amount",
+    "vat_rate",
     "total_amount",
     "confidence"
   ]
@@ -59,6 +67,9 @@ const invoiceSchema = {
 const systemPrompt = [
   "Extrae datos de facturas de mantenimiento.",
   "Devuelve solo JSON valido, sin markdown.",
+  "descripcion debe contener el concepto real, numero de factura, fecha, base imponible, IVA y total si aparecen.",
+  "concept debe ser el texto bajo el encabezado CONCEPTO, no el nombre del archivo.",
+  "importe_factura y total_amount deben ser el TOTAL FACTURA con IVA incluido.",
   "El importe de una factura rectificativa, abono o devolucion debe ser negativo.",
   "No confundas el cliente BRASA Y LEÑA con el proveedor.",
   "Si el nombre del archivo contiene un proveedor claro, priorizalo para proveedor_name."
@@ -185,6 +196,10 @@ async function extractWithLmStudio(rawText: string, fileName: string): Promise<I
 }
 
 async function extractInvoiceData(rawText: string, fileName: string) {
+  if (hasDeterministicInvoiceData(rawText)) {
+    return {};
+  }
+
   const provider = process.env.INVOICE_AI_PROVIDER || (process.env.LM_STUDIO_BASE_URL ? "lmstudio" : "openai");
 
   if (provider === "lmstudio") {
@@ -192,6 +207,10 @@ async function extractInvoiceData(rawText: string, fileName: string) {
   }
 
   return extractWithOpenAI(rawText, fileName);
+}
+
+function hasDeterministicInvoiceData(rawText: string) {
+  return /c\s*o\s*n\s*c\s*e\s*p\s*t\s*o/i.test(rawText) && /total\s+factura/i.test(rawText) && /\bfactura\b/i.test(rawText);
 }
 
 async function getLookups() {
@@ -277,6 +296,12 @@ export async function POST(request: Request) {
     parsedData: aiData,
     lookups
   });
+  const storedParsedData: InvoiceParsedData = {
+    ...aiData,
+    fecha_incidencia: suggestions.fecha_incidencia ?? aiData.fecha_incidencia ?? null,
+    descripcion: suggestions.descripcion ?? aiData.descripcion ?? null,
+    importe_factura: suggestions.importe_factura ?? aiData.importe_factura ?? null
+  };
 
   const extraction = await admin
     .from("invoice_extractions")
@@ -284,7 +309,7 @@ export async function POST(request: Request) {
       attachment_id: attachment.data.id,
       status: "completed",
       raw_text: rawText,
-      parsed_data: aiData,
+      parsed_data: storedParsedData,
       confidence: aiData.confidence ?? null
     })
     .select("*")

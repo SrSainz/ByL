@@ -93,6 +93,7 @@ export type InvoiceParsedData = {
   fecha_incidencia?: string | null;
   local_name?: string | null;
   zona_names?: string[];
+  concept?: string | null;
   descripcion?: string | null;
   proveedor_name?: string | null;
   prioridad_name?: string | null;
@@ -101,6 +102,9 @@ export type InvoiceParsedData = {
   estado_name?: string | null;
   invoice_number?: string | null;
   invoice_date?: string | null;
+  invoice_base_amount?: string | number | null;
+  vat_amount?: string | number | null;
+  vat_rate?: string | number | null;
   total_amount?: string | null;
   confidence?: number | null;
 };

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Archive, FileText, Pencil, Trash2 } from "lucide-react";
+import { Archive, ExternalLink, FileText, Pencil, Trash2 } from "lucide-react";
 import { archiveIncidentAction, deleteIncidentAction } from "@/app/actions/incidents";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -71,10 +71,12 @@ export default async function IncidentDetailPage({
                     key={attachment.id}
                     className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                     href={`/api/invoices/${attachment.id}/download`}
+                    rel="noreferrer"
                     target="_blank"
                   >
                     <FileText className="h-4 w-4" aria-hidden="true" />
                     {attachment.file_name}
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                   </a>
                 ))}
               </div>
