@@ -28,6 +28,17 @@ function nullableNumber(formData: FormData, key: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function cleanPdfDisplayName(value: string) {
+  const clean = value
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+
+  if (!clean) return "";
+  return /\.pdf$/i.test(clean) ? clean : `${clean}.pdf`;
+}
+
 function selectedZoneIds(formData: FormData) {
   return formData
     .getAll("zona_ids")
@@ -202,10 +213,47 @@ export async function deleteIncidentAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  await supabase.from("incidents").delete().eq("id", incidentId);
+  const { error } = await supabase.from("incidents").delete().eq("id", incidentId);
+
+  if (error) {
+    await supabase.from("incidents").update({ archived: true }).eq("id", incidentId);
+  }
+
   revalidatePath("/dashboard");
   revalidatePath("/incidents");
   redirect("/incidents");
+}
+
+export async function updateAttachmentNameAction(formData: FormData) {
+  const profile = await requireProfile();
+  const attachmentId = requiredString(formData, "attachment_id");
+  const fileName = cleanPdfDisplayName(requiredString(formData, "file_name"));
+
+  if (!attachmentId || !fileName) return;
+
+  const supabase = await createClient();
+  const { data: attachment } = await supabase
+    .from("incident_attachments")
+    .select("id,incident_id,uploaded_by")
+    .eq("id", attachmentId)
+    .maybeSingle();
+
+  if (!attachment) return;
+  if (profile.role !== "admin" && attachment.uploaded_by !== profile.id) {
+    return;
+  }
+
+  await supabase
+    .from("incident_attachments")
+    .update({ file_name: fileName })
+    .eq("id", attachmentId);
+
+  revalidatePath("/admin/invoices");
+  revalidatePath("/incidents");
+
+  if (attachment.incident_id) {
+    revalidatePath(`/incidents/${attachment.incident_id}`);
+  }
 }
 
 export async function dismissAttachmentAction(formData: FormData) {

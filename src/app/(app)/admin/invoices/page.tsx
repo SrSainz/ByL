@@ -1,71 +1,158 @@
-import { CalendarDays, Euro, FileText, MapPin, PlusCircle, Store, Trash2, Wrench } from "lucide-react";
-import { dismissAttachmentAction } from "@/app/actions/incidents";
+import { CalendarDays, Euro, FileText, MapPin, PlusCircle, Save, Search, Store, Tag, Trash2, Wrench } from "lucide-react";
+import { dismissAttachmentAction, updateAttachmentNameAction } from "@/app/actions/incidents";
 import { InvoiceBulkUpload } from "@/components/invoices/invoice-bulk-upload";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireRole } from "@/lib/auth";
-import { getPendingInvoiceAttachments } from "@/lib/data";
+import { getAllLookups, getCustomListGroups, getPendingInvoiceAttachments, parseInvoiceFilters } from "@/lib/data";
 import { formatDateTime } from "@/lib/format";
-import type { InvoiceExtraction, InvoiceParsedData } from "@/lib/types";
+import type { CustomListGroup, IncidentAttachment, InvoiceExtraction, InvoiceFilters, InvoiceParsedData, LookupItem } from "@/lib/types";
 
-export default async function InvoiceInboxPage() {
+export default async function InvoiceInboxPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
   const profile = await requireRole(["admin"]);
-  const attachments = await getPendingInvoiceAttachments(profile);
+  const filters = parseInvoiceFilters(params);
+  const [lookups, customGroups, attachments] = await Promise.all([
+    getAllLookups(),
+    getCustomListGroups(),
+    getPendingInvoiceAttachments(profile, filters)
+  ]);
 
   return (
     <div>
       <PageHeader
         title="Facturas pendientes"
-        description="Sube facturas, revisa lo que ha detectado la app y crea la incidencia cuando esté listo."
+        description="Sube facturas, revisa los datos y crea la incidencia cuando esté listo."
       />
       <InvoiceBulkUpload />
+      <InvoiceFilterForm
+        categoryItems={categoryItems(customGroups)}
+        filters={filters}
+        priorities={lookups.priorities}
+        providers={lookups.providers}
+        zones={lookups.zones}
+      />
 
       {attachments.length === 0 ? (
-        <EmptyState title="No hay facturas pendientes" description="Cuando subas facturas aparecerán aquí para revisarlas." />
+        <EmptyState title="No hay facturas pendientes" description="Sube facturas o cambia los filtros." />
       ) : (
         <div className="space-y-3">
-          {attachments.map((attachment) => {
-            const extraction = Array.isArray(attachment.invoice_extractions)
-              ? attachment.invoice_extractions[0]
-              : attachment.invoice_extractions as InvoiceExtraction | null | undefined;
-            const parsedData = extraction?.parsed_data ?? {};
-
-            return (
-              <article key={attachment.id} className="rounded-lg border border-border bg-white p-4 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="break-words text-base font-semibold text-slate-950">{attachment.file_name}</h2>
-                    <p className="mt-1 text-sm text-muted">
-                      {Math.round(attachment.size_bytes / 1024)} KB · subida el {formatDateTime(attachment.created_at)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <ButtonLink href={`/incidents/new?attachment_id=${attachment.id}`} variant="primary">
-                      <PlusCircle className="h-4 w-4" aria-hidden="true" />
-                      Crear incidencia
-                    </ButtonLink>
-                    <ButtonLink href={`/api/invoices/${attachment.id}/download`} variant="secondary" target="_blank">
-                      <FileText className="h-4 w-4" aria-hidden="true" />
-                      Ver PDF
-                    </ButtonLink>
-                    <form action={dismissAttachmentAction}>
-                      <input type="hidden" name="attachment_id" value={attachment.id} />
-                      <Button type="submit" variant="danger">
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        Descartar
-                      </Button>
-                    </form>
-                  </div>
-                </div>
-
-                <InvoiceSummary parsedData={parsedData} status={extraction?.status} />
-              </article>
-            );
-          })}
+          <p className="text-sm text-muted">
+            {attachments.length} factura{attachments.length === 1 ? "" : "s"} pendiente{attachments.length === 1 ? "" : "s"}.
+          </p>
+          {attachments.map((attachment) => (
+            <InvoiceCard key={attachment.id} attachment={attachment} />
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+function InvoiceFilterForm({
+  filters,
+  providers,
+  priorities,
+  categoryItems,
+  zones
+}: {
+  filters: InvoiceFilters;
+  providers: LookupItem[];
+  priorities: LookupItem[];
+  categoryItems: LookupItem[];
+  zones: LookupItem[];
+}) {
+  return (
+    <details className="group mb-5 rounded-lg border border-border bg-white p-4" open={hasInvoiceFilters(filters)}>
+      <summary className="focus-ring flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-md px-1 text-base font-semibold text-slate-950">
+        <span className="inline-flex items-center gap-2">
+          <Search className="h-5 w-5 text-primary" aria-hidden="true" />
+          Filtrar facturas
+        </span>
+        <span className="text-sm font-medium text-muted group-open:hidden">Abrir</span>
+        <span className="hidden text-sm font-medium text-muted group-open:inline">Cerrar</span>
+      </summary>
+
+      <form className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SelectFilter label="Proveedor" name="provider" value={filters.provider} items={providers} />
+        <Field label="Fecha factura">
+          <input className="field" name="date" type="date" defaultValue={filters.date ?? ""} />
+        </Field>
+        <Field label="Nº factura">
+          <input className="field" name="number" placeholder="Nº factura" defaultValue={filters.number ?? ""} />
+        </Field>
+        <Field label="Importe">
+          <input className="field" name="amount" type="number" step="0.01" placeholder="Ej. 326.70" defaultValue={filters.amount ?? ""} />
+        </Field>
+        <SelectFilter label="Prioridad" name="priority" value={filters.priority} items={priorities} />
+        <CategoryFilter items={categoryItems} value={filters.category} />
+        <SelectFilter label="Zona" name="zone" value={filters.zone} items={zones} />
+        <div className="flex flex-wrap items-end gap-2">
+          <Button type="submit" className="min-w-32">
+            <Search className="h-4 w-4" aria-hidden="true" />
+            Filtrar
+          </Button>
+          <ButtonLink href="/admin/invoices" variant="secondary">
+            Limpiar
+          </ButtonLink>
+        </div>
+      </form>
+    </details>
+  );
+}
+
+function InvoiceCard({ attachment }: { attachment: IncidentAttachment }) {
+  const extraction = Array.isArray(attachment.invoice_extractions)
+    ? attachment.invoice_extractions[0]
+    : attachment.invoice_extractions as InvoiceExtraction | null | undefined;
+  const parsedData = extraction?.parsed_data ?? {};
+
+  return (
+    <article className="rounded-lg border border-border bg-white p-4 shadow-sm">
+      <div className="space-y-3">
+        <form action={updateAttachmentNameAction} className="grid gap-2 lg:grid-cols-[minmax(260px,1fr)_auto]">
+          <input type="hidden" name="attachment_id" value={attachment.id} />
+          <label className="space-y-1">
+            <span className="label">Nombre del PDF</span>
+            <input className="field w-full min-w-0 font-semibold" name="file_name" defaultValue={attachment.file_name} />
+          </label>
+          <Button type="submit" variant="secondary" className="lg:mt-6">
+            <Save className="h-4 w-4" aria-hidden="true" />
+            Guardar nombre
+          </Button>
+        </form>
+
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p className="text-sm text-muted">
+            {Math.round(attachment.size_bytes / 1024)} KB · subida el {formatDateTime(attachment.created_at)}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href={`/incidents/new?attachment_id=${attachment.id}`} variant="primary">
+              <PlusCircle className="h-4 w-4" aria-hidden="true" />
+              Crear incidencia
+            </ButtonLink>
+            <ButtonLink href={`/api/invoices/${attachment.id}/download`} variant="secondary" target="_blank">
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Ver PDF
+            </ButtonLink>
+            <form action={dismissAttachmentAction}>
+              <input type="hidden" name="attachment_id" value={attachment.id} />
+              <Button type="submit" variant="danger">
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                Descartar
+              </Button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <InvoiceSummary parsedData={parsedData} status={extraction?.status} />
+    </article>
   );
 }
 
@@ -82,6 +169,7 @@ function InvoiceSummary({
     { icon: <CalendarDays className="h-4 w-4" />, label: "Fecha factura", value: dateValue(parsedData.invoice_date ?? parsedData.fecha_incidencia) },
     { icon: <FileText className="h-4 w-4" />, label: "Nº factura", value: textValue(parsedData.invoice_number) },
     { icon: <Euro className="h-4 w-4" />, label: "Importe", value: amountValue(parsedData.importe_factura ?? parsedData.total_amount) },
+    { icon: <Tag className="h-4 w-4" />, label: "Categoría", value: textValue(parsedData.categoria_name ?? parsedData.category_name) },
     { icon: <MapPin className="h-4 w-4" />, label: "Local", value: textValue(parsedData.local_name) },
     { icon: <MapPin className="h-4 w-4" />, label: "Zona", value: zoneValue(parsedData.zona_names) },
     { icon: <Wrench className="h-4 w-4" />, label: "Prioridad sugerida", value: textValue(parsedData.prioridad_name) }
@@ -138,6 +226,78 @@ function SummaryItem({
       <dd className="mt-1 break-words text-sm font-semibold text-slate-950">{value}</dd>
     </div>
   );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="space-y-1">
+      <span className="label">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function SelectFilter({
+  label,
+  name,
+  value,
+  items
+}: {
+  label: string;
+  name: keyof InvoiceFilters;
+  value?: string;
+  items: LookupItem[];
+}) {
+  return (
+    <Field label={label}>
+      <select className="field" name={name} defaultValue={value ?? ""}>
+        <option value="">{label}</option>
+        {items.map((item) => (
+          <option key={item.id} value={item.name}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+function CategoryFilter({ items, value }: { items: LookupItem[]; value?: string }) {
+  if (items.length === 0) {
+    return (
+      <Field label="Categoría">
+        <input className="field" name="category" placeholder="Categoría" defaultValue={value ?? ""} />
+      </Field>
+    );
+  }
+
+  return <SelectFilter label="Categoría" name="category" value={value} items={items} />;
+}
+
+function hasInvoiceFilters(filters: InvoiceFilters) {
+  return Object.values(filters).some(Boolean);
+}
+
+function categoryItems(groups: CustomListGroup[]) {
+  const group = groups.find((candidate) => normalizeText(candidate.name).includes("categoria"));
+
+  return (group?.custom_list_items ?? []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    active: item.active,
+    created_at: item.created_at,
+    sort_order: item.sort_order,
+    color: item.color
+  }));
+}
+
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function textValue(value?: string | null) {

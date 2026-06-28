@@ -30,6 +30,27 @@ export type LookupItem = {
   color?: string | null;
 };
 
+export type CustomListItem = {
+  id: string;
+  group_id: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  color: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CustomListGroup = {
+  id: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  custom_list_items?: CustomListItem[];
+};
+
 export type Incident = {
   id: string;
   fecha_incidencia: string;
@@ -93,6 +114,8 @@ export type InvoiceParsedData = {
   fecha_incidencia?: string | null;
   local_name?: string | null;
   zona_names?: string[];
+  categoria_name?: string | null;
+  category_name?: string | null;
   concept?: string | null;
   descripcion?: string | null;
   proveedor_name?: string | null;
@@ -146,6 +169,16 @@ export type IncidentFilters = {
   status_group?: "new" | "pending" | "resolved";
 };
 
+export type InvoiceFilters = {
+  provider?: string;
+  date?: string;
+  number?: string;
+  amount?: string;
+  priority?: string;
+  category?: string;
+  zone?: string;
+};
+
 type TableShape<Row> = {
   Row: Row;
   Insert: Partial<Row>;
@@ -168,6 +201,8 @@ export type Database = {
       incident_zones: TableShape<IncidentZone>;
       incident_attachments: TableShape<IncidentAttachment>;
       invoice_extractions: TableShape<InvoiceExtraction>;
+      custom_list_groups: TableShape<CustomListGroup>;
+      custom_list_items: TableShape<CustomListItem>;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

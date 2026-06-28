@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Archive, ArrowLeft, ExternalLink, FileText, Pencil, Trash2 } from "lucide-react";
-import { archiveIncidentAction, deleteIncidentAction } from "@/app/actions/incidents";
+import { Archive, ArrowLeft, ExternalLink, FileText, Pencil, Save, Trash2 } from "lucide-react";
+import { archiveIncidentAction, deleteIncidentAction, updateAttachmentNameAction } from "@/app/actions/incidents";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
@@ -71,19 +71,38 @@ export default async function IncidentDetailPage({
           {incident.incident_attachments?.length ? (
             <div className="mt-5">
               <p className="label">Facturas adjuntas</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 space-y-2">
                 {incident.incident_attachments.map((attachment) => (
-                  <a
+                  <div
                     key={attachment.id}
-                    className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    href={`/api/invoices/${attachment.id}/download`}
-                    rel="noreferrer"
-                    target="_blank"
+                    className="grid gap-2 rounded-md border border-border bg-white p-2 sm:grid-cols-[minmax(220px,1fr)_auto]"
                   >
-                    <FileText className="h-4 w-4" aria-hidden="true" />
-                    {attachment.file_name}
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  </a>
+                    {canEditIncident(profile, incident) ? (
+                      <form action={updateAttachmentNameAction} className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_auto]">
+                        <input type="hidden" name="attachment_id" value={attachment.id} />
+                        <input className="field h-10 min-w-0" name="file_name" defaultValue={attachment.file_name} />
+                        <Button type="submit" variant="secondary" className="min-h-10 px-3">
+                          <Save className="h-4 w-4" aria-hidden="true" />
+                          Guardar
+                        </Button>
+                      </form>
+                    ) : (
+                      <p className="flex min-h-10 items-center gap-2 break-words text-sm font-semibold text-slate-800">
+                        <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        {attachment.file_name}
+                      </p>
+                    )}
+                    <a
+                      className="focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      href={`/api/invoices/${attachment.id}/download`}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <FileText className="h-4 w-4" aria-hidden="true" />
+                      Ver PDF
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                    </a>
+                  </div>
                 ))}
               </div>
             </div>

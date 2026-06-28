@@ -128,6 +128,26 @@ create table if not exists public.invoice_extractions (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.custom_list_groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  active boolean not null default true,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.custom_list_items (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.custom_list_groups(id) on delete cascade,
+  name text not null,
+  active boolean not null default true,
+  sort_order integer not null default 0,
+  color text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_incidents_created_by on public.incidents(created_by);
 create index if not exists idx_incidents_status on public.incidents(estado_id);
 create index if not exists idx_incidents_priority on public.incidents(prioridad_id);
@@ -145,6 +165,9 @@ create index if not exists idx_incident_zones_zona_id on public.incident_zones(z
 create index if not exists idx_incident_attachments_incident_id on public.incident_attachments(incident_id);
 create index if not exists idx_incident_attachments_uploaded_by on public.incident_attachments(uploaded_by);
 create index if not exists idx_invoice_extractions_attachment_id on public.invoice_extractions(attachment_id);
+create unique index if not exists idx_custom_list_groups_name_lower on public.custom_list_groups (lower(name));
+create unique index if not exists idx_custom_list_items_group_name_lower on public.custom_list_items (group_id, lower(name));
+create index if not exists idx_custom_list_items_group_id on public.custom_list_items(group_id);
 
 update public.profiles set role = 'admin' where role = 'premium';
 
@@ -312,6 +335,16 @@ create trigger set_incidents_updated_at
 before update on public.incidents
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_custom_list_groups_updated_at on public.custom_list_groups;
+create trigger set_custom_list_groups_updated_at
+before update on public.custom_list_groups
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_custom_list_items_updated_at on public.custom_list_items;
+create trigger set_custom_list_items_updated_at
+before update on public.custom_list_items
+for each row execute function public.set_updated_at();
+
 create or replace function public.notify_basic_incident()
 returns trigger
 language plpgsql
@@ -368,7 +401,12 @@ begin
 
   if tg_op = 'DELETE' then
     insert into public.incident_history (incident_id, changed_by, change_type, old_value)
-    values (old.id, auth.uid(), 'deleted', to_jsonb(old));
+    values (
+      null,
+      auth.uid(),
+      'deleted',
+      jsonb_build_object('incident_id', old.id, 'datos', to_jsonb(old))
+    );
     return old;
   end if;
 
@@ -400,6 +438,8 @@ alter table public.incident_history enable row level security;
 alter table public.incident_zones enable row level security;
 alter table public.incident_attachments enable row level security;
 alter table public.invoice_extractions enable row level security;
+alter table public.custom_list_groups enable row level security;
+alter table public.custom_list_items enable row level security;
 
 create policy "profiles read own or elevated"
 on public.profiles for select
@@ -646,6 +686,16 @@ on public.statuses for select to authenticated using (active = true or public.is
 create policy "lookup admin manage statuses"
 on public.statuses for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
+create policy "custom list groups read active or admin"
+on public.custom_list_groups for select to authenticated using (active = true or public.is_admin());
+create policy "custom list groups admin manage"
+on public.custom_list_groups for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+create policy "custom list items read active or admin"
+on public.custom_list_items for select to authenticated using (active = true or public.is_admin());
+create policy "custom list items admin manage"
+on public.custom_list_items for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
 insert into public.locals (name)
 select U&'PENDIENTE_DE_A\00D1ADIR'
 where not exists (select 1 from public.locals where name = U&'PENDIENTE_DE_A\00D1ADIR');
@@ -693,6 +743,35 @@ update public.statuses set color = '#4f46e5' where name = 'En proceso' and color
 update public.statuses set color = '#16754f' where name = 'Resuelta' and color is null;
 update public.statuses set color = '#171717' where name = 'Cerrada' and color is null;
 update public.statuses set color = '#b42318' where name = 'Cancelada' and color is null;
+
+insert into public.custom_list_groups (name, sort_order)
+values (U&'Categor\00EDas', 10)
+on conflict do nothing;
+
+with category_group as (
+  select id from public.custom_list_groups where lower(name) in (U&'categor\00EDas', 'categorias') order by created_at limit 1
+),
+seed(name, sort_order, color) as (
+  values
+    (U&'Fontaner\00EDa', 10, '#0e7490'),
+    ('Electricidad', 20, '#b24000'),
+    ('Maquinaria', 30, '#4f46e5'),
+    (U&'Climatizaci\00F3n', 40, '#2563eb'),
+    ('Gas', 50, '#b42318'),
+    ('Recambios', 60, '#6c665c'),
+    ('Obra', 70, '#171717'),
+    ('Limpieza', 80, '#16754f'),
+    ('General', 90, '#6c665c')
+)
+insert into public.custom_list_items (group_id, name, sort_order, color)
+select category_group.id, seed.name, seed.sort_order, seed.color
+from category_group, seed
+where not exists (
+  select 1
+  from public.custom_list_items existing
+  where existing.group_id = category_group.id
+    and lower(existing.name) = lower(seed.name)
+);
 
 with seed(name) as (
   values

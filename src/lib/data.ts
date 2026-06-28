@@ -1,6 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { isPremiumRole } from "@/lib/permissions";
-import type { Incident, IncidentAttachment, IncidentFilters, LookupItem, LookupTable, Notification, Profile } from "@/lib/types";
+import type {
+  CustomListGroup,
+  CustomListItem,
+  Incident,
+  IncidentAttachment,
+  IncidentFilters,
+  InvoiceFilters,
+  LookupItem,
+  LookupTable,
+  Notification,
+  Profile
+} from "@/lib/types";
 
 export const INCIDENT_SELECT = `
   *,
@@ -51,6 +62,40 @@ export async function getAllLookups(activeOnly = true) {
   return { locals, zones, responsables, providers, priorities, statuses };
 }
 
+export async function getCustomListGroups(activeOnly = true) {
+  const supabase = await createClient();
+  let groupsQuery = supabase
+    .from("custom_list_groups")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  let itemsQuery = supabase
+    .from("custom_list_items")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (activeOnly) {
+    groupsQuery = groupsQuery.eq("active", true);
+    itemsQuery = itemsQuery.eq("active", true);
+  }
+
+  const [groups, items] = await Promise.all([groupsQuery, itemsQuery]);
+
+  if (groups.error) throw groups.error;
+  if (items.error) throw items.error;
+
+  const itemsByGroup = new Map<string, CustomListItem[]>();
+  for (const item of (items.data ?? []) as CustomListItem[]) {
+    itemsByGroup.set(item.group_id, [...(itemsByGroup.get(item.group_id) ?? []), item]);
+  }
+
+  return ((groups.data ?? []) as CustomListGroup[]).map((group) => ({
+    ...group,
+    custom_list_items: itemsByGroup.get(group.id) ?? []
+  }));
+}
+
 export function parseFilters(searchParams: Record<string, string | string[] | undefined>): IncidentFilters {
   const get = (key: string) => {
     const value = searchParams[key];
@@ -71,6 +116,23 @@ export function parseFilters(searchParams: Record<string, string | string[] | un
     status_group: statusGroup === "new" || statusGroup === "pending" || statusGroup === "resolved"
       ? statusGroup
       : undefined
+  };
+}
+
+export function parseInvoiceFilters(searchParams: Record<string, string | string[] | undefined>): InvoiceFilters {
+  const get = (key: string) => {
+    const value = searchParams[key];
+    return Array.isArray(value) ? value[0] : value;
+  };
+
+  return {
+    provider: get("provider") || undefined,
+    date: get("date") || undefined,
+    number: get("number") || undefined,
+    amount: get("amount") || undefined,
+    priority: get("priority") || undefined,
+    category: get("category") || undefined,
+    zone: get("zone") || undefined
   };
 }
 
@@ -141,7 +203,7 @@ export async function getIncidentById(profile: Profile, id: string) {
   return data as Incident | null;
 }
 
-export async function getPendingInvoiceAttachments(profile: Profile) {
+export async function getPendingInvoiceAttachments(profile: Profile, filters: InvoiceFilters = {}) {
   const supabase = await createClient();
   let query = supabase
     .from("incident_attachments")
@@ -159,7 +221,7 @@ export async function getPendingInvoiceAttachments(profile: Profile) {
     throw error;
   }
 
-  return (data ?? []);
+  return ((data ?? []) as IncidentAttachment[]).filter((attachment) => matchesInvoiceFilters(attachment, filters));
 }
 
 export async function getInvoiceAttachmentById(profile: Profile, id: string) {
@@ -206,4 +268,81 @@ export async function getNotifications(profile: Profile) {
   }
 
   return (data ?? []) as Notification[];
+}
+
+function matchesInvoiceFilters(attachment: IncidentAttachment, filters: InvoiceFilters) {
+  const extraction = Array.isArray(attachment.invoice_extractions)
+    ? attachment.invoice_extractions[0]
+    : attachment.invoice_extractions;
+  const parsed = extraction?.parsed_data ?? {};
+  const haystack = normalizeFilterText([
+    attachment.file_name,
+    parsed.proveedor_name,
+    parsed.invoice_number,
+    parsed.invoice_date,
+    parsed.fecha_incidencia,
+    parsed.prioridad_name,
+    parsed.categoria_name,
+    parsed.category_name,
+    parsed.concept,
+    parsed.descripcion,
+    ...(parsed.zona_names ?? [])
+  ].filter(Boolean).join(" "));
+
+  if (filters.provider && !haystack.includes(normalizeFilterText(filters.provider))) return false;
+  if (filters.number && !normalizeFilterText(parsed.invoice_number ?? "").includes(normalizeFilterText(filters.number))) return false;
+  if (filters.priority && normalizeFilterText(parsed.prioridad_name ?? "") !== normalizeFilterText(filters.priority)) return false;
+  if (filters.category && !haystack.includes(normalizeFilterText(filters.category))) return false;
+  if (filters.zone && !haystack.includes(normalizeFilterText(filters.zone))) return false;
+
+  if (filters.date) {
+    const invoiceDate = normalizeInvoiceDate(parsed.invoice_date ?? parsed.fecha_incidencia);
+    if (invoiceDate !== filters.date) return false;
+  }
+
+  if (filters.amount) {
+    const expected = parseFilterAmount(filters.amount);
+    const current = parseFilterAmount(parsed.importe_factura ?? parsed.total_amount);
+    if (expected == null || current == null || Math.abs(expected - current) > 0.009) return false;
+  }
+
+  return true;
+}
+
+function normalizeFilterText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function normalizeInvoiceDate(value?: string | null) {
+  if (!value) return "";
+  const clean = value.trim();
+  const iso = clean.match(/^(20\d{2})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+
+  const spanish = clean.match(/^(\d{1,2})\/(\d{1,2})\/(20\d{2})$/);
+  if (spanish) return `${spanish[3]}-${spanish[2].padStart(2, "0")}-${spanish[1].padStart(2, "0")}`;
+
+  return clean;
+}
+
+function parseFilterAmount(value?: string | number | null) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (!value) return null;
+
+  const clean = value
+    .replace(/\s+/g, "")
+    .replace(/[^\d,.\-()]/g, "");
+  const negative = clean.startsWith("-") || (clean.startsWith("(") && clean.endsWith(")"));
+  const normalized = clean.replace(/[()]/g, "").replace(/^-/, "");
+  const decimalIndex = Math.max(normalized.lastIndexOf(","), normalized.lastIndexOf("."));
+  const whole = decimalIndex >= 0 ? normalized.slice(0, decimalIndex).replace(/[,.]/g, "") : normalized.replace(/[,.]/g, "");
+  const decimals = decimalIndex >= 0 ? normalized.slice(decimalIndex + 1).replace(/[,.]/g, "") : "";
+  const parsed = Number(`${negative ? "-" : ""}${whole || "0"}${decimals ? `.${decimals}` : ""}`);
+
+  return Number.isFinite(parsed) ? parsed : null;
 }

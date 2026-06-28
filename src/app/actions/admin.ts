@@ -116,7 +116,7 @@ export async function createLookupAction(formData: FormData) {
     payload.local_id = localId;
   }
 
-  const supabase = await createClient();
+  const supabase = getSupabaseAdmin();
   await supabase.from(table).insert(payload);
   revalidatePath("/admin/lists");
 }
@@ -146,7 +146,7 @@ export async function updateLookupAction(formData: FormData) {
     payload.local_id = localId;
   }
 
-  const supabase = await createClient();
+  const supabase = getSupabaseAdmin();
   await supabase.from(table).update(payload).eq("id", id);
   revalidatePath("/admin/lists");
 }
@@ -160,7 +160,7 @@ export async function deleteLookupAction(formData: FormData) {
     return;
   }
 
-  const supabase = await createClient();
+  const supabase = getSupabaseAdmin();
   const { error } = await supabase.from(table).delete().eq("id", id);
 
   if (error) {
@@ -169,4 +169,120 @@ export async function deleteLookupAction(formData: FormData) {
 
   revalidatePath("/admin/lists");
   revalidatePath("/incidents");
+}
+
+export async function createCustomListGroupAction(formData: FormData) {
+  await requireRole(["admin"]);
+  const name = str(formData, "name");
+  const sortOrder = Number(str(formData, "sort_order") || "0");
+
+  if (!name) return;
+
+  const supabase = getSupabaseAdmin();
+  await supabase.from("custom_list_groups").insert({
+    name,
+    sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+    active: true
+  });
+
+  revalidatePath("/admin/lists");
+}
+
+export async function updateCustomListGroupAction(formData: FormData) {
+  await requireRole(["admin"]);
+  const id = str(formData, "group_id");
+  const name = str(formData, "name");
+  const sortOrder = Number(str(formData, "sort_order") || "0");
+  const active = formData.get("active") === "on";
+
+  if (!id || !name) return;
+
+  const supabase = getSupabaseAdmin();
+  await supabase
+    .from("custom_list_groups")
+    .update({
+      name,
+      sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+      active
+    })
+    .eq("id", id);
+
+  revalidatePath("/admin/lists");
+}
+
+export async function deleteCustomListGroupAction(formData: FormData) {
+  await requireRole(["admin"]);
+  const id = str(formData, "group_id");
+
+  if (!id) return;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("custom_list_groups").delete().eq("id", id);
+
+  if (error) {
+    await supabase.from("custom_list_groups").update({ active: false }).eq("id", id);
+  }
+
+  revalidatePath("/admin/lists");
+}
+
+export async function createCustomListItemAction(formData: FormData) {
+  await requireRole(["admin"]);
+  const groupId = str(formData, "group_id");
+  const name = str(formData, "name");
+  const sortOrder = Number(str(formData, "sort_order") || "0");
+  const color = str(formData, "color") || null;
+
+  if (!groupId || !name) return;
+
+  const supabase = getSupabaseAdmin();
+  await supabase.from("custom_list_items").insert({
+    group_id: groupId,
+    name,
+    sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+    color,
+    active: true
+  });
+
+  revalidatePath("/admin/lists");
+}
+
+export async function updateCustomListItemAction(formData: FormData) {
+  await requireRole(["admin"]);
+  const id = str(formData, "item_id");
+  const name = str(formData, "name");
+  const sortOrder = Number(str(formData, "sort_order") || "0");
+  const color = str(formData, "color") || null;
+  const active = formData.get("active") === "on";
+
+  if (!id || !name) return;
+
+  const supabase = getSupabaseAdmin();
+  await supabase
+    .from("custom_list_items")
+    .update({
+      name,
+      sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+      color,
+      active
+    })
+    .eq("id", id);
+
+  revalidatePath("/admin/lists");
+}
+
+export async function deleteCustomListItemAction(formData: FormData) {
+  await requireRole(["admin"]);
+  const id = str(formData, "item_id");
+
+  if (!id) return;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("custom_list_items").delete().eq("id", id);
+
+  if (error) {
+    await supabase.from("custom_list_items").update({ active: false }).eq("id", id);
+  }
+
+  revalidatePath("/admin/lists");
 }
