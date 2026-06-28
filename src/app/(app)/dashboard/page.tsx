@@ -8,8 +8,7 @@ import { requireProfile } from "@/lib/auth";
 import { getAllLookups, getIncidents } from "@/lib/data";
 import { isPremiumRole } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
-import type { LookupItem } from "@/lib/types";
-import type { UserRole } from "@/lib/types";
+import type { LookupItem, UserRole } from "@/lib/types";
 
 export default async function DashboardPage() {
   const profile = await requireProfile();
@@ -20,9 +19,9 @@ export default async function DashboardPage() {
   const open = incidents.filter((incident) => !["Resuelta", "Cerrada", "Cancelada"].includes(incident.statuses?.name ?? "")).length;
   const latest = incidents.slice(0, 5);
   const pendingNotifications = await getPendingNotifications(profile.id, profile.role);
-  const lookups = isPremiumRole(profile.role) ? await getAllLookups() : null;
-  const byPriority = lookups ? breakdownFromLookups(lookups.priorities, incidents, "prioridad") : [];
-  const byStatus = lookups ? breakdownFromLookups(lookups.statuses, incidents, "estado") : [];
+  const lookups = await getAllLookups();
+  const byPriority = isPremiumRole(profile.role) ? breakdownFromLookups(lookups.priorities, incidents, "prioridad") : [];
+  const byStatus = breakdownFromLookups(lookups.statuses, incidents, "estado");
 
   return (
     <div>
@@ -63,12 +62,10 @@ export default async function DashboardPage() {
         ) : null}
       </div>
 
-      {isPremiumRole(profile.role) ? (
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <Breakdown title="Por prioridad" values={byPriority} />
-          <Breakdown title="Por estado" values={byStatus} />
-        </div>
-      ) : null}
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {isPremiumRole(profile.role) ? <Breakdown title="Por prioridad" values={byPriority} /> : null}
+        <Breakdown title={isPremiumRole(profile.role) ? "Por estado" : "Mis incidencias por estado"} values={byStatus} />
+      </div>
 
       <div className="mt-6">
         <PageHeader title="Últimas incidencias" />
@@ -103,23 +100,88 @@ function breakdownFromLookups(
 }
 
 function Breakdown({ title, values }: { title: string; values: BreakdownItem[] }) {
+  const total = values.reduce((sum, item) => sum + item.value, 0);
+  const chartBackground = buildConicGradient(values);
+  const visibleValues = total > 0 ? values : [];
+
   return (
-    <div className="rounded-lg border border-border bg-white p-4">
-      <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-      <div className="mt-3 space-y-2">
-        {values.map((item) => (
-          <Link
-            key={item.id}
-            className="focus-ring flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-slate-50"
-            href={item.href}
-          >
-            <Badge label={item.label} color={item.color} />
-            <span className="font-semibold">{item.value}</span>
-          </Link>
-        ))}
+    <div className="rounded-lg border border-border bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+        <span className="rounded-full bg-surface-subtle px-2.5 py-1 text-xs font-semibold text-muted">
+          {total} total
+        </span>
+      </div>
+      <div className={total > 0 ? "mt-4 grid gap-4 sm:grid-cols-[160px,1fr] sm:items-center" : "mt-3 space-y-3"}>
+        {total > 0 ? (
+          <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full p-4" style={{ background: chartBackground }}>
+            <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white text-center shadow-inner">
+              <span className="text-2xl font-bold text-slate-950">{total}</span>
+              <span className="text-xs font-medium text-muted">incidencias</span>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-md bg-surface-subtle px-3 py-3 text-sm text-muted">
+            Sin incidencias asignadas en esta comparativa.
+          </div>
+        )}
+        <div className="space-y-2">
+          {visibleValues.map((item, index) => {
+            const percent = total > 0 ? Math.round((item.value / total) * 100) : 0;
+
+            return (
+              <Link
+                key={item.id}
+                className="focus-ring flex min-h-11 items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-slate-50"
+                href={item.href}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: chartColor(item, index) }}
+                    aria-hidden="true"
+                  />
+                  <Badge label={item.label} color={item.color} className="max-w-[14rem] truncate" />
+                </span>
+                <span className="shrink-0 text-right text-sm font-semibold text-slate-950">
+                  {item.value}
+                  <span className="ml-1 text-xs font-medium text-muted">({percent}%)</span>
+                </span>
+              </Link>
+            );
+          })}
+          {visibleValues.length === 0 ? <p className="text-sm text-muted">No hay datos para comparar.</p> : null}
+        </div>
       </div>
     </div>
   );
+}
+
+const chartPalette = ["#b24000", "#111111", "#2563eb", "#16a34a", "#eab308", "#dc2626", "#7c3aed", "#0891b2"];
+
+function chartColor(item: BreakdownItem, index: number) {
+  return item.color || chartPalette[index % chartPalette.length];
+}
+
+function buildConicGradient(values: BreakdownItem[]) {
+  const total = values.reduce((sum, item) => sum + item.value, 0);
+
+  if (total <= 0) {
+    return "conic-gradient(#e5e7eb 0% 100%)";
+  }
+
+  let cursor = 0;
+  const segments = values
+    .map((item, index) => {
+      if (item.value <= 0) return null;
+
+      const start = cursor;
+      cursor += (item.value / total) * 100;
+      return `${chartColor(item, index)} ${start}% ${cursor}%`;
+    })
+    .filter(Boolean);
+
+  return `conic-gradient(${segments.join(", ")})`;
 }
 
 async function getPendingNotifications(userId: string, role: string) {
