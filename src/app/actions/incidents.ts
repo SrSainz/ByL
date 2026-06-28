@@ -20,6 +20,14 @@ function nullableString(formData: FormData, key: string) {
   return value || null;
 }
 
+function nullableNumber(formData: FormData, key: string) {
+  const value = requiredString(formData, key).replace(",", ".");
+  if (!value) return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function selectedZoneIds(formData: FormData) {
   return formData
     .getAll("zona_ids")
@@ -96,6 +104,7 @@ export async function createIncidentAction(
     responsable_aviso_id: requiredString(formData, "responsable_aviso_id"),
     proveedor_id: canUseAdminFields ? nullableString(formData, "proveedor_id") : null,
     prioridad_id: canUseAdminFields ? nullableString(formData, "prioridad_id") : null,
+    importe_factura: canUseAdminFields ? nullableNumber(formData, "importe_factura") : null,
     fecha_resolucion: canUseAdminFields ? nullableString(formData, "fecha_resolucion") : null,
     estado_id: canUseAdminFields ? nullableString(formData, "estado_id") ?? nueva?.id ?? null : nueva?.id ?? null,
     created_by: profile.id,
@@ -147,6 +156,7 @@ export async function updateIncidentAction(
     responsable_aviso_id: requiredString(formData, "responsable_aviso_id"),
     proveedor_id: nullableString(formData, "proveedor_id"),
     prioridad_id: nullableString(formData, "prioridad_id"),
+    importe_factura: nullableNumber(formData, "importe_factura"),
     fecha_resolucion: nullableString(formData, "fecha_resolucion"),
     estado_id: nullableString(formData, "estado_id")
   };

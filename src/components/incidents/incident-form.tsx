@@ -23,6 +23,7 @@ type Suggestions = {
   descripcion?: string;
   proveedor_id?: string;
   prioridad_id?: string;
+  importe_factura?: number | string | null;
   estado_id?: string;
 };
 
@@ -53,6 +54,7 @@ export function IncidentForm({
   const [descripcion, setDescripcion] = useState(incident?.descripcion ?? "");
   const [proveedorId, setProveedorId] = useState(incident?.proveedor_id ?? "");
   const [prioridadId, setPrioridadId] = useState(incident?.prioridad_id ?? "");
+  const [importeFactura, setImporteFactura] = useState(incident?.importe_factura?.toString() ?? "");
   const [fechaResolucion, setFechaResolucion] = useState(incident?.fecha_resolucion ?? "");
   const [estadoId, setEstadoId] = useState(incident?.estado_id ?? "");
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
@@ -94,6 +96,9 @@ export function IncidentForm({
     if (suggestions.descripcion) setDescripcion(suggestions.descripcion);
     if (suggestions.proveedor_id) setProveedorId(suggestions.proveedor_id);
     if (suggestions.prioridad_id) setPrioridadId(suggestions.prioridad_id);
+    if (suggestions.importe_factura !== undefined && suggestions.importe_factura !== null) {
+      setImporteFactura(String(suggestions.importe_factura).replace(",", "."));
+    }
     if (suggestions.estado_id) setEstadoId(suggestions.estado_id);
 
     setAttachments((current) => [...current, result.attachment]);
@@ -199,6 +204,19 @@ export function IncidentForm({
           </Field>
           <Field label="Prioridad" htmlFor="prioridad_id">
             <Select id="prioridad_id" name="prioridad_id" items={lookups.priorities} value={prioridadId} onChange={(event) => setPrioridadId(event.target.value)} />
+          </Field>
+          <Field label="Importe factura" htmlFor="importe_factura">
+            <input
+              className="field"
+              id="importe_factura"
+              name="importe_factura"
+              type="number"
+              step="0.01"
+              inputMode="decimal"
+              value={importeFactura}
+              onChange={(event) => setImporteFactura(event.target.value)}
+              placeholder="Ej. -125.50"
+            />
           </Field>
           <Field label="Fecha de resolucion" htmlFor="fecha_resolucion">
             <input

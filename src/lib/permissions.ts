@@ -50,6 +50,7 @@ export function allowedIncidentUpdateFields(role: UserRole) {
       ...basicFields,
       "proveedor_id",
       "prioridad_id",
+      "importe_factura",
       "fecha_resolucion",
       "estado_id",
       "archived"

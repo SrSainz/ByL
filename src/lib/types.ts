@@ -39,6 +39,7 @@ export type Incident = {
   responsable_aviso_id: string;
   proveedor_id: string | null;
   prioridad_id: string | null;
+  importe_factura: number | null;
   fecha_resolucion: string | null;
   estado_id: string | null;
   created_by: string;
@@ -95,6 +96,7 @@ export type InvoiceParsedData = {
   descripcion?: string | null;
   proveedor_name?: string | null;
   prioridad_name?: string | null;
+  importe_factura?: number | string | null;
   fecha_resolucion?: string | null;
   estado_name?: string | null;
   invoice_number?: string | null;

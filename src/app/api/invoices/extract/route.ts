@@ -6,6 +6,9 @@ import type { InvoiceParsedData, LookupItem } from "@/lib/types";
 
 export const runtime = "nodejs";
 
+const MAX_AI_TEXT_CHARS = Number(process.env.INVOICE_AI_MAX_TEXT_CHARS || 6_000);
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_INVOICE_MAX_OUTPUT_TOKENS || 700);
+
 async function extractPdfText(buffer: Buffer) {
   try {
     const { PDFParse } = await import("pdf-parse");
@@ -15,6 +18,59 @@ async function extractPdfText(buffer: Buffer) {
     return String(parsed.text || "").slice(0, 40_000);
   } catch {
     return "";
+  }
+}
+
+const invoiceSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    fecha_incidencia: { type: ["string", "null"] },
+    local_name: { type: ["string", "null"] },
+    zona_names: { type: "array", items: { type: "string" } },
+    descripcion: { type: ["string", "null"] },
+    proveedor_name: { type: ["string", "null"] },
+    prioridad_name: { type: ["string", "null"] },
+    importe_factura: { type: ["number", "string", "null"] },
+    fecha_resolucion: { type: ["string", "null"] },
+    estado_name: { type: ["string", "null"] },
+    invoice_number: { type: ["string", "null"] },
+    invoice_date: { type: ["string", "null"] },
+    total_amount: { type: ["string", "null"] },
+    confidence: { type: ["number", "null"] }
+  },
+  required: [
+    "fecha_incidencia",
+    "local_name",
+    "zona_names",
+    "descripcion",
+    "proveedor_name",
+    "prioridad_name",
+    "importe_factura",
+    "fecha_resolucion",
+    "estado_name",
+    "invoice_number",
+    "invoice_date",
+    "total_amount",
+    "confidence"
+  ]
+};
+
+const systemPrompt = [
+  "Extrae datos de facturas de mantenimiento.",
+  "Devuelve solo JSON valido, sin markdown.",
+  "El importe de una factura rectificativa, abono o devolucion debe ser negativo."
+].join(" ");
+
+function parseModelJson(text?: string) {
+  if (!text) return {};
+  const clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  const match = clean.match(/\{[\s\S]*\}/);
+
+  try {
+    return JSON.parse(match?.[0] ?? clean) as InvoiceParsedData;
+  } catch {
+    return {};
   }
 }
 
@@ -31,51 +87,23 @@ async function extractWithOpenAI(rawText: string, fileName: string): Promise<Inv
       authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_INVOICE_MODEL || "gpt-4.1-mini",
+      model: process.env.OPENAI_INVOICE_MODEL || "gpt-4.1-nano",
+      max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
       input: [
         {
           role: "system",
-          content: "Extrae datos de facturas de mantenimiento. Devuelve solo JSON valido."
+          content: systemPrompt
         },
         {
           role: "user",
-          content: `Archivo: ${fileName}\n\nTexto PDF:\n${rawText.slice(0, 18_000)}`
+          content: `Archivo: ${fileName}\n\nTexto PDF:\n${rawText.slice(0, MAX_AI_TEXT_CHARS)}`
         }
       ],
       text: {
         format: {
           type: "json_schema",
           name: "invoice_extraction",
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              fecha_incidencia: { type: ["string", "null"] },
-              local_name: { type: ["string", "null"] },
-              zona_names: { type: "array", items: { type: "string" } },
-              descripcion: { type: ["string", "null"] },
-              proveedor_name: { type: ["string", "null"] },
-              prioridad_name: { type: ["string", "null"] },
-              estado_name: { type: ["string", "null"] },
-              invoice_number: { type: ["string", "null"] },
-              invoice_date: { type: ["string", "null"] },
-              total_amount: { type: ["string", "null"] },
-              confidence: { type: ["number", "null"] }
-            },
-            required: [
-              "fecha_incidencia",
-              "local_name",
-              "zona_names",
-              "descripcion",
-              "proveedor_name",
-              "prioridad_name",
-              "estado_name",
-              "invoice_number",
-              "invoice_date",
-              "total_amount",
-              "confidence"
-            ]
-          },
+          schema: invoiceSchema,
           strict: true
         }
       }
@@ -89,11 +117,55 @@ async function extractWithOpenAI(rawText: string, fileName: string): Promise<Inv
   const payload = await response.json();
   const text = payload.output_text || payload.output?.flatMap((item: { content?: Array<{ text?: string }> }) => item.content ?? []).map((item: { text?: string }) => item.text).join("");
 
-  try {
-    return JSON.parse(text || "{}") as InvoiceParsedData;
-  } catch {
+  return parseModelJson(text);
+}
+
+async function extractWithLmStudio(rawText: string, fileName: string): Promise<InvoiceParsedData> {
+  const baseUrl = process.env.LM_STUDIO_BASE_URL?.replace(/\/$/, "");
+  const model = process.env.LM_STUDIO_INVOICE_MODEL || process.env.LM_STUDIO_MODEL || "gemma-3-4b-it";
+
+  if (!baseUrl || rawText.trim().length < 40) {
     return {};
   }
+
+  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      max_tokens: OPENAI_MAX_OUTPUT_TOKENS,
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: [
+            `Archivo: ${fileName}`,
+            "Devuelve exactamente estas claves JSON:",
+            Object.keys(invoiceSchema.properties).join(", "),
+            `Texto PDF:\n${rawText.slice(0, MAX_AI_TEXT_CHARS)}`
+          ].join("\n\n")
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    return {};
+  }
+
+  const payload = await response.json();
+  return parseModelJson(payload.choices?.[0]?.message?.content);
+}
+
+async function extractInvoiceData(rawText: string, fileName: string) {
+  const provider = process.env.INVOICE_AI_PROVIDER || (process.env.LM_STUDIO_BASE_URL ? "lmstudio" : "openai");
+
+  if (provider === "lmstudio") {
+    return extractWithLmStudio(rawText, fileName);
+  }
+
+  return extractWithOpenAI(rawText, fileName);
 }
 
 async function getLookups() {
@@ -171,7 +243,7 @@ export async function POST(request: Request) {
   }
 
   const rawText = await extractPdfText(buffer);
-  const aiData = await extractWithOpenAI(rawText, file.name);
+  const aiData = await extractInvoiceData(rawText, file.name);
   const lookups = await getLookups();
   const suggestions = buildInvoiceSuggestion({
     fileName: file.name,

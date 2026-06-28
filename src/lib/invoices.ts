@@ -15,6 +15,7 @@ export type InvoiceSuggestion = {
   descripcion?: string;
   proveedor_id?: string;
   prioridad_id?: string;
+  importe_factura?: number;
   estado_id?: string;
 };
 
@@ -39,6 +40,36 @@ function normalizeDate(value?: string | null) {
 
 function findFirstDate(text: string) {
   return normalizeDate(text.match(/\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20\d{2})\b/)?.[0]);
+}
+
+export function parseInvoiceAmount(value?: string | number | null) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (!value) return undefined;
+
+  const compact = value
+    .replace(/\s+/g, "")
+    .replace(/[^\d,.\-()]/g, "");
+  const isNegative = compact.startsWith("-") || (compact.startsWith("(") && compact.endsWith(")"));
+  const normalized = compact
+    .replace(/[()]/g, "")
+    .replace(/^-/, "");
+  const lastComma = normalized.lastIndexOf(",");
+  const lastDot = normalized.lastIndexOf(".");
+  const decimalIndex = Math.max(lastComma, lastDot);
+  const integerPart = decimalIndex >= 0 ? normalized.slice(0, decimalIndex).replace(/[,.]/g, "") : normalized.replace(/[,.]/g, "");
+  const decimalPart = decimalIndex >= 0 ? normalized.slice(decimalIndex + 1).replace(/[,.]/g, "") : "";
+  const parsed = Number(`${isNegative ? "-" : ""}${integerPart || "0"}${decimalPart ? `.${decimalPart}` : ""}`);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function findFirstAmount(text: string) {
+  const refund = text.match(/\b(?:abono|devoluci[oó]n|rectificativa|a devolver)\b[\s\S]{0,80}?(-?\(?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\)?)/i);
+  const total = refund?.[1] ?? text.match(/\btotal(?:\s+factura)?\b[\s\S]{0,80}?(-?\(?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\)?)/i)?.[1];
+  return parseInvoiceAmount(total);
 }
 
 function findLookupId(items: LookupItem[], haystack: string, explicitName?: string | null) {
@@ -84,6 +115,7 @@ export function buildInvoiceSuggestion({
     descripcion: parsedData.descripcion || fileName.replace(/\.pdf$/i, "").replaceAll("_", " ").slice(0, 500),
     proveedor_id: findLookupId(lookups.providers, haystack, parsedData.proveedor_name),
     prioridad_id: findLookupId(lookups.priorities, haystack, parsedData.prioridad_name),
+    importe_factura: parseInvoiceAmount(parsedData.importe_factura ?? parsedData.total_amount) ?? findFirstAmount(haystack),
     estado_id: findLookupId(lookups.statuses, haystack, parsedData.estado_name)
   };
 }

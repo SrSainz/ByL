@@ -21,6 +21,7 @@ export function IncidentList({ incidents, profile }: { incidents: Incident[]; pr
               <th className="px-4 py-3">Descripcion</th>
               <th className="px-4 py-3">Responsable</th>
               {isPremiumRole(profile.role) ? <th className="px-4 py-3">Proveedor</th> : null}
+              {isPremiumRole(profile.role) ? <th className="px-4 py-3">Importe</th> : null}
               <th className="px-4 py-3">Prioridad</th>
               <th className="px-4 py-3">Estado</th>
               <th className="px-4 py-3">Creada</th>
@@ -41,6 +42,7 @@ export function IncidentList({ incidents, profile }: { incidents: Incident[]; pr
                 </td>
                 <td className="px-4 py-3">{incident.responsables_aviso?.name ?? "-"}</td>
                 {isPremiumRole(profile.role) ? <td className="px-4 py-3">{incident.providers?.name ?? "-"}</td> : null}
+                {isPremiumRole(profile.role) ? <td className="px-4 py-3 font-medium">{formatAmount(incident.importe_factura)}</td> : null}
                 <td className="px-4 py-3"><Badge label={incident.priorities?.name} color={incident.priorities?.color} /></td>
                 <td className="px-4 py-3"><Badge label={incident.statuses?.name} color={incident.statuses?.color} /></td>
                 <td className="px-4 py-3 text-muted">{formatDateTime(incident.created_at)}</td>
@@ -70,6 +72,11 @@ export function IncidentList({ incidents, profile }: { incidents: Incident[]; pr
       </div>
     </div>
   );
+}
+
+function formatAmount(value?: number | null) {
+  if (value == null) return "-";
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(value);
 }
 
 function zoneNames(incident: Incident) {

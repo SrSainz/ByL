@@ -91,6 +91,7 @@ export default async function IncidentDetailPage({
               {canSeePremiumFields(profile.role) ? (
                 <>
                   <Info label="Proveedor" value={incident.providers?.name} />
+                  <Info label="Importe factura" value={formatAmount(incident.importe_factura)} />
                   <Info label="Fecha resolución" value={incident.fecha_resolucion} />
                   <Info label="Creada por" value={incident.profiles?.full_name || incident.profiles?.email} />
                 </>
@@ -132,6 +133,11 @@ function Info({ label, value }: { label: string; value?: React.ReactNode }) {
       <dd className="mt-1 text-sm text-slate-950">{value || "-"}</dd>
     </div>
   );
+}
+
+function formatAmount(value?: number | null) {
+  if (value == null) return undefined;
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(value);
 }
 
 function zoneNames(incident: { zones?: { name?: string | null } | null; incident_zones?: Array<{ zones?: { name?: string | null } | null }> }) {

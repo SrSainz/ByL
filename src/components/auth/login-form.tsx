@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import Link from "next/link";
 import { signInAction, type AuthState } from "@/app/actions/auth";
@@ -47,11 +46,14 @@ export function LoginForm() {
       {state.error ? <p className="helper-error">{state.error}</p> : null}
       <Button className="w-full" type="submit" disabled={pending}>
         <LogIn className="h-4 w-4" aria-hidden="true" />
-        {pending ? "Entrando..." : "Entrar"}
+        {pending ? "Comprobando acceso..." : "Entrar a la aplicación"}
       </Button>
       <Link className="block text-center text-sm font-medium text-primary" href="/reset-password">
-        Recuperar contraseña
+        No recuerdo mi contraseña
       </Link>
+      <p className="text-center text-xs text-muted">
+        Si no tienes acceso, pide a un administrador que cree tu usuario.
+      </p>
     </form>
   );
 }

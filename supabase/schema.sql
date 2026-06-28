@@ -68,6 +68,7 @@ create table if not exists public.incidents (
   responsable_aviso_id uuid not null references public.responsables_aviso(id),
   proveedor_id uuid references public.providers(id),
   prioridad_id uuid references public.priorities(id),
+  importe_factura numeric(12,2),
   fecha_resolucion text,
   estado_id uuid references public.statuses(id),
   created_by uuid not null references public.profiles(id),
@@ -255,6 +256,7 @@ begin
     if user_role = 'basic' then
       new.proveedor_id := null;
       new.prioridad_id := null;
+      new.importe_factura := null;
       new.fecha_resolucion := null;
       new.estado_id := nueva_id;
     end if;
@@ -276,6 +278,7 @@ begin
 
       if new.proveedor_id is distinct from old.proveedor_id
         or new.prioridad_id is distinct from old.prioridad_id
+        or new.importe_factura is distinct from old.importe_factura
         or new.fecha_resolucion is distinct from old.fecha_resolucion
         or new.estado_id is distinct from old.estado_id
         or new.archived is distinct from old.archived then
