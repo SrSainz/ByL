@@ -68,7 +68,15 @@ create table if not exists public.incidents (
   responsable_aviso_id uuid not null references public.responsables_aviso(id),
   proveedor_id uuid references public.providers(id),
   prioridad_id uuid references public.priorities(id),
+  categoria text,
+  numero_factura text,
+  fecha_factura text,
+  importe_neto numeric(12,2),
+  iva_factura numeric(12,2),
   importe_factura numeric(12,2),
+  observaciones text,
+  excel_sync_key text,
+  excel_last_synced_at timestamptz,
   fecha_resolucion text,
   estado_id uuid references public.statuses(id),
   created_by uuid not null references public.profiles(id),
@@ -148,6 +156,20 @@ create table if not exists public.custom_list_items (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.excel_imports (
+  id uuid primary key default gen_random_uuid(),
+  uploaded_by uuid not null references public.profiles(id) on delete cascade,
+  file_name text not null,
+  rows_total integer not null default 0,
+  rows_created integer not null default 0,
+  rows_updated integer not null default 0,
+  rows_skipped integer not null default 0,
+  urgent_count integer not null default 0,
+  saved boolean not null default true,
+  errors jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_incidents_created_by on public.incidents(created_by);
 create index if not exists idx_incidents_status on public.incidents(estado_id);
 create index if not exists idx_incidents_priority on public.incidents(prioridad_id);
@@ -156,6 +178,10 @@ create index if not exists idx_incidents_local_id on public.incidents(local_id);
 create index if not exists idx_incidents_zona_id on public.incidents(zona_id);
 create index if not exists idx_incidents_responsable_aviso_id on public.incidents(responsable_aviso_id);
 create index if not exists idx_incidents_proveedor_id on public.incidents(proveedor_id);
+create unique index if not exists idx_incidents_excel_sync_key on public.incidents(excel_sync_key) where excel_sync_key is not null;
+create index if not exists idx_incidents_numero_factura on public.incidents(numero_factura);
+create index if not exists idx_incidents_fecha_factura on public.incidents(fecha_factura);
+create index if not exists idx_incidents_categoria on public.incidents(categoria);
 create index if not exists idx_notifications_user_read on public.notifications(user_id, "read");
 create index if not exists idx_notifications_incident_id on public.notifications(incident_id);
 create index if not exists idx_zones_local_id on public.zones(local_id);
@@ -168,6 +194,8 @@ create index if not exists idx_invoice_extractions_attachment_id on public.invoi
 create unique index if not exists idx_custom_list_groups_name_lower on public.custom_list_groups (lower(name));
 create unique index if not exists idx_custom_list_items_group_name_lower on public.custom_list_items (group_id, lower(name));
 create index if not exists idx_custom_list_items_group_id on public.custom_list_items(group_id);
+create index if not exists idx_excel_imports_uploaded_by on public.excel_imports(uploaded_by);
+create index if not exists idx_excel_imports_created_at on public.excel_imports(created_at desc);
 
 update public.profiles set role = 'admin' where role = 'premium';
 
@@ -279,7 +307,15 @@ begin
     if user_role = 'basic' then
       new.proveedor_id := null;
       new.prioridad_id := null;
+      new.categoria := null;
+      new.numero_factura := null;
+      new.fecha_factura := null;
+      new.importe_neto := null;
+      new.iva_factura := null;
       new.importe_factura := null;
+      new.observaciones := null;
+      new.excel_sync_key := null;
+      new.excel_last_synced_at := null;
       new.fecha_resolucion := null;
       new.estado_id := nueva_id;
     end if;
@@ -301,7 +337,15 @@ begin
 
       if new.proveedor_id is distinct from old.proveedor_id
         or new.prioridad_id is distinct from old.prioridad_id
+        or new.categoria is distinct from old.categoria
+        or new.numero_factura is distinct from old.numero_factura
+        or new.fecha_factura is distinct from old.fecha_factura
+        or new.importe_neto is distinct from old.importe_neto
+        or new.iva_factura is distinct from old.iva_factura
         or new.importe_factura is distinct from old.importe_factura
+        or new.observaciones is distinct from old.observaciones
+        or new.excel_sync_key is distinct from old.excel_sync_key
+        or new.excel_last_synced_at is distinct from old.excel_last_synced_at
         or new.fecha_resolucion is distinct from old.fecha_resolucion
         or new.estado_id is distinct from old.estado_id
         or new.archived is distinct from old.archived then
@@ -440,6 +484,10 @@ alter table public.incident_attachments enable row level security;
 alter table public.invoice_extractions enable row level security;
 alter table public.custom_list_groups enable row level security;
 alter table public.custom_list_items enable row level security;
+alter table public.excel_imports enable row level security;
+
+grant select, insert, update, delete on public.excel_imports to authenticated;
+grant select, insert, update, delete on public.excel_imports to service_role;
 
 create policy "profiles read own or elevated"
 on public.profiles for select
@@ -696,6 +744,12 @@ on public.custom_list_items for select to authenticated using (active = true or 
 create policy "custom list items admin manage"
 on public.custom_list_items for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
+create policy "excel imports admin manage"
+on public.excel_imports for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
 insert into public.locals (name)
 select U&'PENDIENTE_DE_A\00D1ADIR'
 where not exists (select 1 from public.locals where name = U&'PENDIENTE_DE_A\00D1ADIR');
@@ -931,3 +985,21 @@ from seed
 where not exists (
   select 1 from public.statuses where lower(public.statuses.name) = lower(seed.name)
 );
+
+do $$
+begin
+  begin alter publication supabase_realtime add table public.incidents; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.incident_zones; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.incident_attachments; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.invoice_extractions; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.notifications; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.locals; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.zones; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.responsables_aviso; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.providers; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.priorities; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.statuses; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.custom_list_groups; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.custom_list_items; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.excel_imports; exception when duplicate_object then null; end;
+end $$;

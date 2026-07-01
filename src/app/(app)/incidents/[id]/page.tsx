@@ -118,9 +118,15 @@ export default async function IncidentDetailPage({
               {canSeePremiumFields(profile.role) ? (
                 <>
                   <Info label="Proveedor" value={incident.providers?.name} />
-                  <Info label="Importe factura" value={formatAmount(incident.importe_factura)} />
+                  <Info label="Categoria" value={incident.categoria} />
+                  <Info label="N factura" value={incident.numero_factura} />
+                  <Info label="Fecha factura" value={incident.fecha_factura} />
+                  <Info label="Importe neto" value={formatAmount(incident.importe_neto)} />
+                  <Info label="IVA" value={formatAmount(incident.iva_factura)} />
+                  <Info label="Total factura" value={formatAmount(incident.importe_factura)} />
                   <Info label="Fecha resolución" value={incident.fecha_resolucion} />
                   <Info label="Creada por" value={incident.profiles?.full_name || incident.profiles?.email} />
+                  {incident.observaciones ? <Info label="Observaciones" value={incident.observaciones} /> : null}
                 </>
               ) : null}
             </dl>

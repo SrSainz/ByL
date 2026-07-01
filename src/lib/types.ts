@@ -60,7 +60,15 @@ export type Incident = {
   responsable_aviso_id: string;
   proveedor_id: string | null;
   prioridad_id: string | null;
+  categoria: string | null;
+  numero_factura: string | null;
+  fecha_factura: string | null;
+  importe_neto: number | null;
+  iva_factura: number | null;
   importe_factura: number | null;
+  observaciones: string | null;
+  excel_sync_key: string | null;
+  excel_last_synced_at: string | null;
   fecha_resolucion: string | null;
   estado_id: string | null;
   created_by: string;
@@ -130,6 +138,21 @@ export type InvoiceParsedData = {
   vat_rate?: string | number | null;
   total_amount?: string | number | null;
   confidence?: number | null;
+};
+
+export type ExcelImport = {
+  id: string;
+  uploaded_by: string;
+  file_name: string;
+  rows_total: number;
+  rows_created: number;
+  rows_updated: number;
+  rows_skipped: number;
+  urgent_count: number;
+  saved: boolean;
+  errors: string[];
+  created_at: string;
+  profiles?: Pick<Profile, "id" | "email" | "full_name"> | null;
 };
 
 export type Notification = {
@@ -203,6 +226,7 @@ export type Database = {
       invoice_extractions: TableShape<InvoiceExtraction>;
       custom_list_groups: TableShape<CustomListGroup>;
       custom_list_items: TableShape<CustomListItem>;
+      excel_imports: TableShape<ExcelImport>;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

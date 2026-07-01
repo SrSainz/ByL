@@ -4,6 +4,7 @@ import type {
   CustomListGroup,
   CustomListItem,
   Incident,
+  ExcelImport,
   IncidentAttachment,
   IncidentFilters,
   InvoiceFilters,
@@ -155,7 +156,8 @@ export async function getIncidents(profile: Profile, filters: IncidentFilters = 
   if (filters.prioridad) query = query.eq("prioridad_id", filters.prioridad);
   if (filters.responsable) query = query.eq("responsable_aviso_id", filters.responsable);
   if (filters.proveedor) query = query.eq("proveedor_id", filters.proveedor);
-  if (filters.from) query = query.eq("fecha_incidencia", filters.from);
+  if (filters.from) query = query.gte("fecha_incidencia", filters.from);
+  if (filters.to) query = query.lte("fecha_incidencia", filters.to);
   if (filters.q) query = query.ilike("descripcion", `%${filters.q}%`);
 
   const { data, error } = await query;
@@ -178,8 +180,8 @@ export async function getIncidents(profile: Profile, filters: IncidentFilters = 
       const status = incident.statuses?.name ?? "";
 
       if (filters.status_group === "new") return status === "Nueva";
-      if (filters.status_group === "resolved") return ["Resuelta", "Cerrada"].includes(status);
-      return !["Resuelta", "Cerrada", "Cancelada"].includes(status);
+      if (filters.status_group === "resolved") return ["Resuelta", "Cerrada", "Completado"].includes(status);
+      return !["Resuelta", "Cerrada", "Completado", "Cancelada"].includes(status);
     });
   }
 
@@ -268,6 +270,21 @@ export async function getNotifications(profile: Profile) {
   }
 
   return (data ?? []) as Notification[];
+}
+
+export async function getExcelImports(limit = 8) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("excel_imports")
+    .select("*,profiles(id,email,full_name)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as ExcelImport[];
 }
 
 function matchesInvoiceFilters(attachment: IncidentAttachment, filters: InvoiceFilters) {

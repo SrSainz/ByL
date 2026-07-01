@@ -14,9 +14,9 @@ export default async function DashboardPage() {
   const profile = await requireProfile();
   const incidents = await getIncidents(profile);
   const total = incidents.length;
-  const resolved = incidents.filter((incident) => ["Resuelta", "Cerrada"].includes(incident.statuses?.name ?? "")).length;
+  const resolved = incidents.filter((incident) => ["Resuelta", "Cerrada", "Completado"].includes(incident.statuses?.name ?? "")).length;
   const newCount = incidents.filter((incident) => incident.statuses?.name === "Nueva").length;
-  const open = incidents.filter((incident) => !["Resuelta", "Cerrada", "Cancelada"].includes(incident.statuses?.name ?? "")).length;
+  const open = incidents.filter((incident) => !["Resuelta", "Cerrada", "Completado", "Cancelada"].includes(incident.statuses?.name ?? "")).length;
   const latest = incidents.slice(0, 5);
   const pendingNotifications = await getPendingNotifications(profile.id, profile.role);
   const lookups = await getAllLookups();

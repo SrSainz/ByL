@@ -17,6 +17,11 @@ export type InvoiceSuggestion = {
   descripcion?: string;
   proveedor_id?: string;
   prioridad_id?: string;
+  categoria?: string;
+  numero_factura?: string;
+  fecha_factura?: string;
+  importe_neto?: number;
+  iva_factura?: number;
   importe_factura?: number;
   estado_id?: string;
 };
@@ -188,21 +193,42 @@ function findSummaryVatLine(text: string) {
     const line = lines[index];
     const normalized = normalizeText(line);
     const amounts = amountsInLine(line);
+    const surroundingContext = normalizeText(lines.slice(Math.max(0, index - 4), index + 3).join(" "));
 
     const followingContext = normalizeText(lines.slice(index, index + 8).join(" "));
     if (amounts.length === 3 && amounts[1] > 0 && amounts[1] <= 30 && /base imponible|cuota i v a|cuota iva/.test(followingContext)) {
       return {
         baseAmount: amounts[0],
         vatRate: amounts[1],
-        vatAmount: amounts[2]
+        vatAmount: amounts[2],
+        totalAmount: amounts[0] + amounts[2]
       };
+    }
+
+    if (amounts.length >= 4 && /\bbase\b/.test(surroundingContext) && /\bcuota\b/.test(surroundingContext) && /\btotal\b/.test(surroundingContext)) {
+      const totalAmount = amounts.at(-1);
+      const vatAmount = amounts.at(-2);
+      const baseAmount = amounts.at(-3);
+      const vatRate = parseInvoiceAmount(line.match(/\s(\d{1,2})(?:\s+\d|$)/)?.[1]);
+
+      return { baseAmount, vatRate, vatAmount, totalAmount };
+    }
+
+    if (amounts.length >= 4 && !/[a-zA-Z\u00C0-\u017F]/.test(line) && /\b(4|10|21)\b/.test(line)) {
+      const totalAmount = amounts.at(-1);
+      const vatAmount = amounts.at(-2);
+      const baseAmount = amounts.at(-3);
+      const vatRate = parseInvoiceAmount(line.match(/\b(4|10|21)\b/)?.[1]);
+
+      return { baseAmount, vatRate, vatAmount, totalAmount };
     }
 
     if (/\bbase\b/.test(normalized) && /\biva\b/.test(normalized) && amounts.length >= 2) {
       return {
         baseAmount: amounts[0],
         vatRate: parseInvoiceAmount(line.match(/\biva\s+(\d{1,2}(?:[.,]\d+)?)\s*%/i)?.[1]),
-        vatAmount: amounts.at(-1)
+        vatAmount: amounts.at(-1),
+        totalAmount: amounts[0] + (amounts.at(-1) ?? 0)
       };
     }
 
@@ -212,7 +238,8 @@ function findSummaryVatLine(text: string) {
       return {
         baseAmount: amounts[0],
         vatRate: amounts[1],
-        vatAmount: amounts[2]
+        vatAmount: amounts[2],
+        totalAmount: amounts[0] + amounts[2]
       };
     }
   }
@@ -251,6 +278,7 @@ function findInvoiceTotals(text: string, parsedData: InvoiceParsedData) {
     findLastAmountByLabel(text, /^total\b/i) ??
     findFinalEuroAmount(text) ??
     parseInvoiceAmount(parsedData.importe_factura ?? parsedData.total_amount) ??
+    summary.totalAmount ??
     findFirstAmount(text);
 
   return { baseAmount, vatRate, vatAmount, totalAmount };
@@ -335,6 +363,9 @@ function findProviderName(rawText: string, parsedData: InvoiceParsedData, fileNa
 function findInvoiceNumber(text: string, parsedData: InvoiceParsedData) {
   if (parsedData.invoice_number) return parsedData.invoice_number.trim();
 
+  const compactGides = text.match(/^\s*\d+\s+([A-Z]?\d{5,})\s+\d+\s+\d{1,2}\/\d{1,2}\/20\d{2}\b/m)?.[1]?.trim();
+  if (compactGides) return compactGides;
+
   const beforeLabel = text.match(/(?:^|\n)[ \t]*([A-Z0-9][A-Z0-9./-]{1,})[ \t]+(?:n[^\s]*[ \t]*)?factura\s*:/i)?.[1]?.trim();
   if (beforeLabel) return beforeLabel;
 
@@ -413,6 +444,26 @@ function extractConcept(text: string, parsedData: InvoiceParsedData) {
   return extractConceptBlock(text, parsedData) || extractInvoiceLines(text) || parsedData.descripcion?.trim();
 }
 
+function inferCategory(text: string, parsedData: InvoiceParsedData) {
+  const explicit = parsedData.categoria_name || parsedData.category_name;
+  if (explicit?.trim()) return explicit.trim();
+
+  const normalized = normalizeText(text);
+  const checks: Array<[RegExp, string]> = [
+    [/\b(grifo|fuga|agua|desatasc|atasco|cisterna|fluxometro|latiguillo|fontaner)/, "Fontaneria"],
+    [/\b(enchufe|electr|luz|iluminacion|cuadro|magnetotermico|diferencial)/, "Electricidad"],
+    [/\b(camara|frigor|congel|refriger|compresor|evaporador|temperatura|hielo)/, "Camaras frigorificas"],
+    [/\b(aire|clima|climatizacion|split|conducto)/, "Climatizacion"],
+    [/\b(lavavajillas|freidora|horno|churrasquera|plancha|maquina|fabricador)/, "Maquinaria"],
+    [/\b(gas|termopar|quemador)/, "Gas"],
+    [/\b(cerradura|cerrajer|puerta|bombin|bisagra)/, "Cerrajeria"],
+    [/\b(albanil|obra|azulejo|pared|techo|suelo)/, "Obra"],
+    [/\b(limpieza|desinfeccion|quimic)/, "Limpieza"]
+  ];
+
+  return checks.find(([pattern]) => pattern.test(normalized))?.[1] ?? "General";
+}
+
 function findLocalName(text: string, parsedData: InvoiceParsedData) {
   if (parsedData.local_name) return parsedData.local_name;
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -469,15 +520,24 @@ export function buildInvoiceSuggestion({
   const zonaIds = findLookupIds(lookups.zones, haystack, parsedData.zona_names ?? []);
   const pendingZoneId = findPendingLookupId(lookups.zones);
   const totals = findInvoiceTotals(rawText, parsedData);
+  const invoiceNumber = findInvoiceNumber(rawText, parsedData);
+  const invoiceDate = findInvoiceDate(rawText, parsedData);
+  const concept = extractConcept(rawText, parsedData) ?? "";
+  const category = inferCategory(`${fileName}\n${rawText}\n${concept}`, parsedData);
 
   return {
-    fecha_incidencia: findInvoiceDate(rawText, parsedData),
+    fecha_incidencia: invoiceDate,
     local_id: findLookupId(lookups.locals, haystack, parsedData.local_name) ?? findPendingLookupId(lookups.locals),
     zona_ids: zonaIds.length > 0 ? zonaIds : pendingZoneId ? [pendingZoneId] : [],
     responsable_id: findPendingLookupId(lookups.responsables),
     descripcion: buildDescription({ fileName, rawText, parsedData }),
     proveedor_id: findLookupId(lookups.providers, haystack, providerName ?? parsedData.proveedor_name) ?? findPendingLookupId(lookups.providers),
     prioridad_id: findLookupId(lookups.priorities, haystack, parsedData.prioridad_name),
+    categoria: category,
+    numero_factura: invoiceNumber,
+    fecha_factura: invoiceDate,
+    importe_neto: totals.baseAmount,
+    iva_factura: totals.vatAmount,
     importe_factura: totals.totalAmount,
     estado_id: findLookupId(lookups.statuses, haystack, parsedData.estado_name)
   };

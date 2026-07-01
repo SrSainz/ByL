@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   Bell,
+  FileSpreadsheet,
   FileText,
   Home,
   ListChecks,
@@ -16,6 +17,7 @@ import { ActiveLink } from "@/components/layout/active-link";
 import { GuidedTour } from "@/components/layout/guided-tour";
 import { HelpMenu } from "@/components/layout/help-menu";
 import { PasswordChangeGuard } from "@/components/layout/password-change-guard";
+import { RealtimeRefresh } from "@/components/layout/realtime-refresh";
 import { getInitials } from "@/lib/format";
 import { isAdmin, isPremiumRole } from "@/lib/permissions";
 import type { Profile } from "@/lib/types";
@@ -55,13 +57,14 @@ export function AppShell({
     navItems.push(
       { href: "/admin/users", label: "Usuarios", icon: Users, tour: "nav-users" },
       { href: "/admin/lists", label: "Listas", icon: Settings2, tour: "nav-lists" },
-      { href: "/admin/invoices", label: "Facturas", icon: FileText, tour: "nav-invoices" }
+      { href: "/admin/invoices", label: "Facturas", icon: FileText, tour: "nav-invoices" },
+      { href: "/admin/excel", label: "Excel", icon: FileSpreadsheet, tour: "nav-excel" }
     );
   } else {
     navItems.push({ href: "/profile", label: "Perfil", icon: User, tour: "nav-profile" });
   }
 
-  const mobileItems = navItems.filter((item) => item.href !== "/notifications").slice(0, 5);
+  const mobileItems = navItems.filter((item) => item.href !== "/notifications").slice(0, 6);
 
   return (
     <div className="min-h-dvh bg-background">
@@ -173,6 +176,7 @@ export function AppShell({
 
       <GuidedTour role={profile.role} />
       <PasswordChangeGuard mustChange={profile.must_change_password} />
+      <RealtimeRefresh enabled={isAdmin(profile.role)} />
     </div>
   );
 }

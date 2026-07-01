@@ -24,6 +24,11 @@ type Suggestions = {
   descripcion?: string;
   proveedor_id?: string;
   prioridad_id?: string;
+  categoria?: string;
+  numero_factura?: string;
+  fecha_factura?: string;
+  importe_neto?: number | string | null;
+  iva_factura?: number | string | null;
   importe_factura?: number | string | null;
   estado_id?: string;
 };
@@ -61,9 +66,19 @@ export function IncidentForm({
   const [descripcion, setDescripcion] = useState(incident?.descripcion ?? initialSuggestions?.descripcion ?? "");
   const [proveedorId, setProveedorId] = useState(incident?.proveedor_id ?? initialSuggestions?.proveedor_id ?? "");
   const [prioridadId, setPrioridadId] = useState(incident?.prioridad_id ?? initialSuggestions?.prioridad_id ?? "");
+  const [categoria, setCategoria] = useState(incident?.categoria ?? initialSuggestions?.categoria ?? "");
+  const [numeroFactura, setNumeroFactura] = useState(incident?.numero_factura ?? initialSuggestions?.numero_factura ?? "");
+  const [fechaFactura, setFechaFactura] = useState(incident?.fecha_factura ?? initialSuggestions?.fecha_factura ?? "");
+  const [importeNeto, setImporteNeto] = useState(
+    incident?.importe_neto?.toString() ?? (initialSuggestions?.importe_neto != null ? String(initialSuggestions.importe_neto) : "")
+  );
+  const [ivaFactura, setIvaFactura] = useState(
+    incident?.iva_factura?.toString() ?? (initialSuggestions?.iva_factura != null ? String(initialSuggestions.iva_factura) : "")
+  );
   const [importeFactura, setImporteFactura] = useState(
     incident?.importe_factura?.toString() ?? (initialSuggestions?.importe_factura != null ? String(initialSuggestions.importe_factura) : "")
   );
+  const [observaciones, setObservaciones] = useState(incident?.observaciones ?? "");
   const [fechaResolucion, setFechaResolucion] = useState(incident?.fecha_resolucion ?? "");
   const [estadoId, setEstadoId] = useState(incident?.estado_id ?? initialSuggestions?.estado_id ?? "");
   const [invoiceFiles, setInvoiceFiles] = useState<File[]>([]);
@@ -119,12 +134,15 @@ export function IncidentForm({
         ...new Set(successful.flatMap((item) => item.suggestions.zona_ids ?? []))
       ];
       const descriptions = successful.map((item) => item.suggestions.descripcion).filter(Boolean);
-      const total = successful.reduce((sum, item) => {
-        const amount = item.suggestions.importe_factura;
+      const sumSuggestion = (key: "importe_factura" | "importe_neto" | "iva_factura") => successful.reduce((sum, item) => {
+        const amount = item.suggestions[key];
         if (amount === undefined || amount === null) return sum;
         const parsed = Number(String(amount).replace(",", "."));
         return Number.isFinite(parsed) ? sum + parsed : sum;
       }, 0);
+      const total = sumSuggestion("importe_factura");
+      const totalNeto = sumSuggestion("importe_neto");
+      const totalIva = sumSuggestion("iva_factura");
 
       const suggestedFecha = firstWith("fecha_incidencia");
       const suggestedLocal = firstWith("local_id");
@@ -132,6 +150,9 @@ export function IncidentForm({
       const suggestedProveedor = firstWith("proveedor_id");
       const suggestedPrioridad = firstWith("prioridad_id");
       const suggestedEstado = firstWith("estado_id");
+      const suggestedCategoria = firstWith("categoria");
+      const suggestedNumeroFactura = firstWith("numero_factura");
+      const suggestedFechaFactura = firstWith("fecha_factura");
 
       if (typeof suggestedFecha === "string") setFecha(suggestedFecha);
       if (typeof suggestedLocal === "string") setLocalId(suggestedLocal);
@@ -140,6 +161,9 @@ export function IncidentForm({
       if (typeof suggestedProveedor === "string") setProveedorId(suggestedProveedor);
       if (typeof suggestedPrioridad === "string") setPrioridadId(suggestedPrioridad);
       if (typeof suggestedEstado === "string") setEstadoId(suggestedEstado);
+      if (typeof suggestedCategoria === "string") setCategoria(suggestedCategoria);
+      if (typeof suggestedNumeroFactura === "string") setNumeroFactura(suggestedNumeroFactura);
+      if (typeof suggestedFechaFactura === "string") setFechaFactura(suggestedFechaFactura);
       if (descriptions.length > 0) {
         setDescripcion((current) => {
           const nextDescription = descriptions.join("\n\n---\n\n");
@@ -148,6 +172,12 @@ export function IncidentForm({
       }
       if (showAdmin && total !== 0) {
         setImporteFactura(String(Math.round(total * 100) / 100));
+      }
+      if (showAdmin && totalNeto !== 0) {
+        setImporteNeto(String(Math.round(totalNeto * 100) / 100));
+      }
+      if (showAdmin && totalIva !== 0) {
+        setIvaFactura(String(Math.round(totalIva * 100) / 100));
       }
       setAttachments((current) => {
         const known = new Set(current.map((attachment) => attachment.id));
@@ -261,6 +291,62 @@ export function IncidentForm({
           <Field label="Prioridad" htmlFor="prioridad_id">
             <Select id="prioridad_id" name="prioridad_id" items={lookups.priorities} value={prioridadId} onChange={(event) => setPrioridadId(event.target.value)} />
           </Field>
+          <Field label="Categoria" htmlFor="categoria">
+            <input
+              className="field"
+              id="categoria"
+              name="categoria"
+              value={categoria}
+              onChange={(event) => setCategoria(event.target.value)}
+              placeholder="Ej. Fontaneria"
+            />
+          </Field>
+          <Field label="N factura" htmlFor="numero_factura">
+            <input
+              className="field"
+              id="numero_factura"
+              name="numero_factura"
+              value={numeroFactura}
+              onChange={(event) => setNumeroFactura(event.target.value)}
+              placeholder="Numero de factura"
+            />
+          </Field>
+          <Field label="Fecha factura" htmlFor="fecha_factura">
+            <input
+              className="field"
+              id="fecha_factura"
+              name="fecha_factura"
+              type="date"
+              value={fechaFactura}
+              onChange={(event) => setFechaFactura(event.target.value)}
+            />
+          </Field>
+          <Field label="Importe neto" htmlFor="importe_neto">
+            <input
+              className="field"
+              id="importe_neto"
+              name="importe_neto"
+              type="number"
+              step="0.01"
+              inputMode="decimal"
+              value={importeNeto}
+              onChange={(event) => setImporteNeto(event.target.value)}
+              placeholder="Ej. -100.00"
+            />
+          </Field>
+          <Field label="IVA" htmlFor="iva_factura">
+            <input
+              className="field"
+              id="iva_factura"
+              name="iva_factura"
+              type="number"
+              step="0.01"
+              inputMode="decimal"
+              value={ivaFactura}
+              onChange={(event) => setIvaFactura(event.target.value)}
+              placeholder="Ej. -21.00"
+            />
+          </Field>
           <Field label="Importe factura" htmlFor="importe_factura">
             <input
               className="field"
@@ -287,6 +373,17 @@ export function IncidentForm({
           <Field label="Estado" htmlFor="estado_id">
             <Select id="estado_id" name="estado_id" items={lookups.statuses} value={estadoId} onChange={(event) => setEstadoId(event.target.value)} />
           </Field>
+          <div className="sm:col-span-2">
+            <Field label="Observaciones" htmlFor="observaciones">
+              <textarea
+                className="field min-h-24"
+                id="observaciones"
+                name="observaciones"
+                value={observaciones}
+                onChange={(event) => setObservaciones(event.target.value)}
+              />
+            </Field>
+          </div>
         </div>
       ) : null}
 

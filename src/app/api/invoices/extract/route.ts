@@ -384,7 +384,13 @@ export async function POST(request: Request) {
   const storedParsedData: InvoiceParsedData = {
     ...aiData,
     fecha_incidencia: suggestions.fecha_incidencia ?? aiData.fecha_incidencia ?? null,
+    categoria_name: suggestions.categoria ?? aiData.categoria_name ?? aiData.category_name ?? null,
+    category_name: suggestions.categoria ?? aiData.category_name ?? aiData.categoria_name ?? null,
     descripcion: suggestions.descripcion ?? aiData.descripcion ?? null,
+    invoice_number: suggestions.numero_factura ?? aiData.invoice_number ?? null,
+    invoice_date: suggestions.fecha_factura ?? aiData.invoice_date ?? suggestions.fecha_incidencia ?? null,
+    invoice_base_amount: suggestions.importe_neto ?? aiData.invoice_base_amount ?? null,
+    vat_amount: suggestions.iva_factura ?? aiData.vat_amount ?? null,
     importe_factura: suggestions.importe_factura ?? aiData.importe_factura ?? null,
     total_amount: suggestions.importe_factura ?? aiData.total_amount ?? null
   };
